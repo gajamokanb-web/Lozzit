@@ -1,0 +1,37 @@
+# Builds an installable test APK in GitHub's cloud. No Android tooling needed on your machine and no Expo account.
+# Runs on every push to main, or by hand from the Actions tab. The APK lands in Releases > test-latest (downloadable from the phone) and as the artifact "app-release-apk".
+# The APK is signed with the debug key the Expo template uses: fine for testing on your own phone, not for the Play Store.
+# Not run locally (Android download servers are unreachable from my environment): if a step fails, send the log.
+name: Android APK
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+      - run: ./gradlew assembleRelease --no-daemon
+        working-directory: android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+      # A rolling pre-release so the APK can be downloaded straight from the phone: Releases > test-latest.
+      - run: cp android/app/build/outputs/apk/release/app-release.apk lozzit.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-latest
+          name: Lozzit APK (latest)
+          prerelease: true
+          files: lozzit.apk

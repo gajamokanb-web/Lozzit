@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Lozzit",
+    "slug": "lozzit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F6F7F3",
+    "ios": { "supportsTablet": false },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#9BDB3F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.lozzit.app",
+      "versionCode": 1
+    },
+    "web": { "favicon": "./assets/icon.png" }
+  }
+}
