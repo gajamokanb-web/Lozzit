@@ -1,6 +1,6 @@
 # Lozzit
 
-Calorie tracker — home screen (Expo / React Native, Android first).
+Calorie tracker (Expo / React Native, Android first). First launch walks you through creating a profile; meals, water and profile are stored on the phone.
 
 ![preview](assets/preview.png)
 
@@ -16,5 +16,5 @@ npm install
 npm run typecheck
 npx expo start
 ```
-Data on the home screen is hard-coded demo data (`src/screens/Home.tsx`).
+Data lives in AsyncStorage on the device (`src/store.tsx`). Steps are not wired yet.
 Font: Plus Jakarta Sans. Icons: Lucide (ISC). Meal photos: Wikimedia Commons, CC BY-SA.
