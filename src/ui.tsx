@@ -17,6 +17,10 @@ export const P = {
   x: ['M18 6 6 18', 'm6 6 12 12'],
   plus: ['M5 12h14', 'M12 5v14'],
   back: ['m15 18-6-6 6-6'],
+  next: ['m9 18 6-6-6-6'],
+  chevDown: ['m6 9 6 6 6-6'],
+  chevUp: ['m18 15-6-6-6 6'],
+  minus: ['M5 12h14'],
 };
 
 export function Icon({ d, size = 24, color = c.ink, fill = 'none', sw = 2 }: { d: string[]; size?: number; color?: string; fill?: string; sw?: number }) {
@@ -35,7 +39,7 @@ export type Tab = 'home' | 'stats' | 'meals' | 'profile';
 export function Screen({ children }: { children: React.ReactNode }) {
   const { top } = useSafeAreaInsets();
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: top + 12, paddingBottom: 150 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: top + 12, paddingBottom: 170 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   );
@@ -45,21 +49,25 @@ export function Title({ children }: { children: string }) {
   return <Text style={s.title}>{children}</Text>;
 }
 
+const LABELS: Record<Tab, string> = { home: 'Dashboard', stats: 'Stats', meals: 'Logs', profile: 'Profile' };
+
 export function BottomNav({ tab, onTab, onScan }: { tab: Tab; onTab: (t: Tab) => void; onScan: () => void }) {
   const { bottom } = useSafeAreaInsets();
-  const col = (t: Tab) => (tab === t ? c.ink : c.soft);
-  const Item = ({ t, d, fill }: { t: Tab; d: string[]; fill?: boolean }) => (
-    <Pressable style={s.tab} onPress={() => onTab(t)} hitSlop={6} accessibilityRole="button" accessibilityLabel={t}>
-      <Icon d={d} color={col(t)} fill={fill && tab === t ? c.ink : 'none'} />
-      <View style={[s.navDot, tab !== t && { opacity: 0 }]} />
-    </Pressable>
-  );
+  const Item = ({ t, d, fill }: { t: Tab; d: string[]; fill?: boolean }) => {
+    const on = tab === t;
+    return (
+      <Pressable style={s.tab} onPress={() => onTab(t)} hitSlop={4} accessibilityRole="button" accessibilityLabel={LABELS[t]}>
+        <Icon d={d} size={22} color={on ? c.ink : c.soft} fill={fill && on ? c.ink : 'none'} />
+        <Text style={[s.tabLabel, on && { color: c.ink, fontFamily: f.bold }]}>{LABELS[t]}</Text>
+      </Pressable>
+    );
+  };
   return (
-    <View style={[s.navWrap, { bottom: Math.max(bottom, 12) + 12 }]} pointerEvents="box-none">
+    <View style={[s.navWrap, { bottom: Math.max(bottom, 12) + 10 }]} pointerEvents="box-none">
       <View style={s.nav}>
         <Item t="home" d={P.home} fill />
         <Item t="stats" d={P.stats} />
-        <View style={{ width: 70 }} />
+        <View style={{ width: 64 }} />
         <Item t="meals" d={P.meals} />
         <Item t="profile" d={P.user} />
       </View>
@@ -73,8 +81,8 @@ export function BottomNav({ tab, onTab, onScan }: { tab: Tab; onTab: (t: Tab) =>
 export const s = StyleSheet.create({
   title: { fontFamily: f.extra, fontSize: 26, color: c.ink, letterSpacing: -0.6, marginHorizontal: 20, marginBottom: 14 },
   navWrap: { position: 'absolute', left: 16, right: 16 },
-  nav: { ...card, height: 64, borderRadius: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 6, elevation: 8, shadowColor: c.ink, shadowOpacity: 0.1, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
-  tab: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.lime },
-  scan: { position: 'absolute', alignSelf: 'center', top: -22, width: 66, height: 66, borderRadius: 33, backgroundColor: c.lime, borderWidth: 5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 10 },
+  nav: { ...card, height: 72, borderRadius: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4, elevation: 8, shadowColor: c.ink, shadowOpacity: 0.1, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
+  tab: { width: 68, height: 56, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  tabLabel: { fontFamily: f.semi, fontSize: 10.5, color: c.soft },
+  scan: { position: 'absolute', alignSelf: 'center', top: -24, width: 66, height: 66, borderRadius: 33, backgroundColor: c.lime, borderWidth: 5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 10 },
 });

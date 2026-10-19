@@ -70,7 +70,7 @@ export function AddFood({ target, onClose }: { target: { meal: MealKey; day: str
             ))}
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 10 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 340 }} contentContainerStyle={{ gap: 10 }}>
             {list.map((e) => <EntryRow key={e.id} name={e.name} kcal={e.kcal} onRemove={() => removeEntry(e.id)} />)}
             <TextInput style={s.input} value={name} onChangeText={setName} placeholder="What did you eat? (optional)" placeholderTextColor={c.soft} maxLength={40} selectionColor={c.lime} />
             <View style={s.kcalBox}>
@@ -103,7 +103,7 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   h: { fontFamily: f.extra, fontSize: 22, color: c.ink, letterSpacing: -0.5 },
   close: { width: 38, height: 38, borderRadius: 19, ...card, alignItems: 'center', justifyContent: 'center' },
-  chips: { flexDirection: 'row', gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   mchip: { ...card, borderRadius: 20, paddingHorizontal: 13, paddingVertical: 9 },
   mchipText: { fontFamily: f.bold, fontSize: 13, color: c.ink },
   row: { ...card, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -8,14 +8,16 @@ export type Profile = {
   goalKg: number;
   activity: number; // PAL multiplier
 };
-export type MealKey = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+export type MealKey = 'breakfast' | 'snack_am' | 'lunch' | 'snack_pm' | 'dinner' | 'snack_eve';
 export type Entry = { id: string; day: string; meal: MealKey; name: string; kcal: number; p: number; c: number; f: number };
 
 export const MEALS: { key: MealKey; label: string }[] = [
   { key: 'breakfast', label: 'Breakfast' },
+  { key: 'snack_am', label: 'Morning Snacks' },
   { key: 'lunch', label: 'Lunch' },
+  { key: 'snack_pm', label: 'Afternoon Snacks' },
   { key: 'dinner', label: 'Dinner' },
-  { key: 'snack', label: 'Snack' },
+  { key: 'snack_eve', label: 'Evening Snacks' },
 ];
 
 export const ACTIVITY = [
@@ -27,20 +29,31 @@ export const ACTIVITY = [
 
 const pad = (n: number) => String(n).padStart(2, '0');
 export const dayKey = (d: Date = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const parseKey = (k: string) => {
+  const [y, m, d] = k.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+export const addDays = (k: string, n: number) => {
+  const d = parseKey(k);
+  return dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+};
 
-/** Monday → Sunday of the week containing `today`. */
-export function weekDays(today: Date = new Date()) {
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
-  const todayKey = dayKey(today);
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** "Mon, Oct 19" */
+export const fmtDay = (k: string) => {
+  const d = parseKey(k);
+  return `${WD[d.getDay()]}, ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+};
+
+/** Monday → Sunday of the week containing `base`. */
+export function weekDays(base: Date = new Date()) {
+  const monday = new Date(base.getFullYear(), base.getMonth(), base.getDate() - ((base.getDay() + 6) % 7));
+  const todayKey = dayKey();
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
     return { key: dayKey(d), letter: 'MTWTFSS'[i], date: d.getDate(), isToday: dayKey(d) === todayKey };
   });
-}
-
-export function greeting(d: Date = new Date()) {
-  const h = d.getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
 export type Targets = { kcal: number; protein: number; carbs: number; fat: number };

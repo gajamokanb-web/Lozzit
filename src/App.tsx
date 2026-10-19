@@ -17,16 +17,19 @@ import { BottomNav, type Tab } from './ui';
 import { Onboarding } from './screens/Onboarding';
 import { Home } from './screens/Home';
 import { AddFood } from './screens/AddFood';
-import { MealsLog, Profile, Stats } from './screens/Others';
+import { Logs, Profile, Stats } from './screens/Others';
+import { Calendar } from './screens/Calendar';
 
 function hourMeal(): MealKey {
   const h = new Date().getHours();
-  return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 18 ? 'snack' : 'dinner';
+  return h < 9 ? 'breakfast' : h < 11 ? 'snack_am' : h < 14 ? 'lunch' : h < 17 ? 'snack_pm' : h < 21 ? 'dinner' : 'snack_eve';
 }
 
 function Root() {
   const { ready, state, setProfile } = useStore();
   const [tab, setTab] = useState<Tab>('home');
+  const [selected, setSelected] = useState(dayKey());
+  const [calendar, setCalendar] = useState(false);
   const [adding, setAdding] = useState<{ meal: MealKey; day: string } | null>(null);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.page }} />;
@@ -34,11 +37,14 @@ function Root() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.page }}>
-      {tab === 'home' && <Home onAdd={(meal, day) => setAdding({ meal, day })} onProfile={() => setTab('profile')} />}
+      {tab === 'home' && (
+        <Home selected={selected} onSelect={setSelected} onOpenCalendar={() => setCalendar(true)} onAdd={(meal, day) => setAdding({ meal, day })} onGoSettings={() => setTab('profile')} />
+      )}
       {tab === 'stats' && <Stats />}
-      {tab === 'meals' && <MealsLog />}
+      {tab === 'meals' && <Logs onPickDay={(k) => { setSelected(k); setTab('home'); }} />}
       {tab === 'profile' && <Profile />}
-      <BottomNav tab={tab} onTab={setTab} onScan={() => setAdding({ meal: hourMeal(), day: dayKey() })} />
+      <BottomNav tab={tab} onTab={setTab} onScan={() => setAdding({ meal: hourMeal(), day: selected })} />
+      <Calendar visible={calendar} selected={selected} marks={new Set(state.entries.map((e) => e.day))} onPick={setSelected} onClose={() => setCalendar(false)} />
       <AddFood target={adding} onClose={() => setAdding(null)} />
     </View>
   );

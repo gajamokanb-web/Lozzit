@@ -2,8 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Entry, Profile } from './domain';
 
-type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number> };
-const EMPTY: State = { profile: null, entries: [], water: {} };
+type Settings = { fit: boolean };
+type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; settings: Settings };
+const EMPTY: State = { profile: null, entries: [], water: {}, settings: { fit: false } };
 const KEY = 'lozzit:v1';
 
 type Store = {
@@ -13,6 +14,7 @@ type Store = {
   addEntry: (e: Omit<Entry, 'id'>) => void;
   removeEntry: (id: string) => void;
   setWater: (day: string, drops: number) => void;
+  setSettings: (s: Partial<Settings>) => void;
   reset: () => void;
 };
 const Ctx = createContext<Store | null>(null);
@@ -25,7 +27,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(KEY);
-        if (raw) setState({ ...EMPTY, ...JSON.parse(raw) });
+        if (raw) {
+          const saved = JSON.parse(raw);
+          // first build used a single 'snack' bucket
+          const entries = (saved.entries ?? []).map((e: Omit<Entry, 'meal'> & { meal: string }) => (e.meal === 'snack' ? { ...e, meal: 'snack_pm' } : e));
+          setState({ ...EMPTY, ...saved, entries, settings: { ...EMPTY.settings, ...saved.settings } });
+        }
       } catch {
         /* unreadable storage: start fresh */
       }
@@ -45,11 +52,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
   const removeEntry = useCallback((id: string) => setState((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) })), []);
   const setWater = useCallback((day: string, drops: number) => setState((s) => ({ ...s, water: { ...s.water, [day]: drops } })), []);
+  const setSettings = useCallback((p: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...p } })), []);
   const reset = useCallback(() => setState(EMPTY), []);
 
   const value = useMemo(
-    () => ({ ready, state, setProfile, addEntry, removeEntry, setWater, reset }),
-    [ready, state, setProfile, addEntry, removeEntry, setWater, reset],
+    () => ({ ready, state, setProfile, addEntry, removeEntry, setWater, setSettings, reset }),
+    [ready, state, setProfile, addEntry, removeEntry, setWater, setSettings, reset],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

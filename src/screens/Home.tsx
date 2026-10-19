@@ -1,38 +1,31 @@
-import React, { useMemo } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f } from '../theme';
-import { dayKey, fmt, greeting, MEALS, sum, targets, weekDays, type MealKey } from '../domain';
+import { addDays, dayKey, fmt, fmtDay, MEALS, parseKey, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
+import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
 
-const PHOTOS: Record<MealKey, number> = {
-  breakfast: require('../../assets/breakfast.jpg'),
-  lunch: require('../../assets/lunch.jpg'),
-  dinner: require('../../assets/dinner.jpg'),
-  snack: require('../../assets/snack.jpg'),
-};
-const DROP_L = 0.25; // litres per drop, 10 drops = 2.5 L
+const DROP_L = 0.25; // litres per drop (250 mL)
 
-function Header({ name, onProfile }: { name: string; onProfile: () => void }) {
+function DateBar({ selected, onSelect, onOpen }: { selected: string; onSelect: (k: string) => void; onOpen: () => void }) {
   return (
-    <View style={s.header}>
-      <Pressable onPress={onProfile} style={s.avatarRing} accessibilityLabel="Profile">
-        <View style={s.avatar}><Text style={s.avatarLetter}>{name.charAt(0).toUpperCase()}</Text></View>
+    <View style={s.dateBar}>
+      <Pressable onPress={() => onSelect(addDays(selected, -1))} style={s.arrow} hitSlop={8} accessibilityLabel="Previous day">
+        <Icon d={P.back} size={22} />
       </Pressable>
-      <View style={{ flex: 1 }}>
-        <Text style={s.greet}>{greeting()}</Text>
-        <Text style={s.hello} numberOfLines={1}>Hello, {name}</Text>
-      </View>
-      <View style={s.bell}>
-        <Icon d={P.bell} size={21} />
-      </View>
+      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="Open calendar" style={s.dateBtn}>
+        <Text style={s.dateText}>{fmtDay(selected)}</Text>
+      </Pressable>
+      <Pressable onPress={() => onSelect(addDays(selected, 1))} style={s.arrow} hitSlop={8} accessibilityLabel="Next day">
+        <Icon d={P.next} size={22} />
+      </Pressable>
     </View>
   );
 }
 
-function WeekStrip({ selected, onSelect }: { selected: string; onSelect: (k: string) => void }) {
-  const days = useMemo(() => weekDays(), []);
+function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekDays>; selected: string; onSelect: (k: string) => void }) {
   return (
     <View style={s.week}>
       {days.map((d) => {
@@ -49,19 +42,65 @@ function WeekStrip({ selected, onSelect }: { selected: string; onSelect: (k: str
   );
 }
 
-export function Home({ onAdd, onProfile }: { onAdd: (meal: MealKey, day: string) => void; onProfile: () => void }) {
+function MealBlock({ label, entries, open, onToggle, onAdd }: { label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void }) {
+  const total = sum(entries, 'kcal');
+  return (
+    <View style={s.block}>
+      <Pressable onPress={onToggle} style={s.blockHead} accessibilityRole="button" accessibilityLabel={`${label}, ${open ? 'collapse' : 'expand'}`}>
+        <Icon d={open ? P.chevUp : P.chevDown} size={20} color={c.muted} />
+        <View style={{ flex: 1 }}>
+          <Text style={s.blockName}>{label}</Text>
+          <Text style={s.blockSub}>{fmt(total)} calories logged</Text>
+        </View>
+      </Pressable>
+      {open && (
+        <>
+          {entries.map((e) => {
+            const macros = [e.p && `P ${Math.round(e.p)}`, e.c && `C ${Math.round(e.c)}`, e.f && `F ${Math.round(e.f)}`].filter(Boolean).join(' · ');
+            return (
+              <Pressable key={e.id} onPress={onAdd} style={s.item}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.itemName} numberOfLines={1}>{e.name}</Text>
+                  {macros ? <Text style={s.itemSub}>{macros}</Text> : null}
+                </View>
+                <Text style={s.itemKcal}>{fmt(e.kcal)}</Text>
+              </Pressable>
+            );
+          })}
+          <Pressable onPress={onAdd} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Add food to ${label}`}>
+            <Text style={s.addText}>Add Food</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }: {
+  selected: string;
+  onSelect: (k: string) => void;
+  onOpenCalendar: () => void;
+  onAdd: (meal: MealKey, day: string) => void;
+  onGoSettings: () => void;
+}) {
   const { state, setWater } = useStore();
   const profile = state.profile!;
-  const [selected, setSelected] = React.useState(dayKey());
   const t = useMemo(() => targets(profile), [profile]);
+  const [closed, setClosed] = useState<Partial<Record<MealKey, boolean>>>({});
+
+  const days = useMemo(() => weekDays(parseKey(selected)), [selected]);
+  const steps = useSteps(days.map((d) => d.key), state.settings.fit);
+  const selIdx = days.findIndex((d) => d.key === selected);
+  const maxSteps = steps ? Math.max(1, ...steps) : 1;
 
   const entries = state.entries.filter((e) => e.day === selected);
   const eaten = sum(entries, 'kcal');
   const left = t.kcal - eaten;
   const pct = Math.min(eaten / t.kcal, 1);
   const R = 58, C = 2 * Math.PI * R;
-  const drops = Math.min(10, state.water[selected] ?? 0);
-  const litres = Number((drops * DROP_L).toFixed(2));
+  const count = state.water[selected] ?? 0;
+  const litres = Number((count * DROP_L).toFixed(2));
+  const setCount = (n: number) => setWater(selected, Math.max(0, Math.min(40, n)));
 
   const macros = [
     { name: 'Protein', v: sum(entries, 'p'), goal: t.protein },
@@ -69,12 +108,10 @@ export function Home({ onAdd, onProfile }: { onAdd: (meal: MealKey, day: string)
     { name: 'Fat', v: sum(entries, 'f'), goal: t.fat },
   ];
 
-  const tapDrop = (i: number) => setWater(selected, drops === i + 1 ? i : i + 1);
-
   return (
     <Screen>
-      <Header name={profile.name} onProfile={onProfile} />
-      <WeekStrip selected={selected} onSelect={setSelected} />
+      <DateBar selected={selected} onSelect={onSelect} onOpen={onOpenCalendar} />
+      <WeekStrip days={days} selected={selected} onSelect={onSelect} />
 
       <View style={s.hero}>
         <View style={s.heroBlob} />
@@ -104,62 +141,67 @@ export function Home({ onAdd, onProfile }: { onAdd: (meal: MealKey, day: string)
       </View>
 
       <View style={s.tiles}>
-        <View style={s.tile}>
+        <Pressable style={s.tile} onPress={state.settings.fit ? undefined : onGoSettings} accessibilityLabel="Steps">
           <View style={s.tileRow}>
             <View style={[s.ico, { backgroundColor: c.orangeTint }]}><Icon d={P.steps} size={18} color={c.orange} sw={2.2} /></View>
             <Text style={s.tileLabel}>Steps</Text>
           </View>
-          <Text style={[s.big, { color: c.soft }]}>—</Text>
+          {state.settings.fit ? (
+            <Text style={s.big}>{steps && selIdx >= 0 ? fmt(steps[selIdx]) : '…'}</Text>
+          ) : (
+            <Text style={s.connect}>Connect Google Fit</Text>
+          )}
           <View style={s.bars}>
-            {[0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4].map((h, i) => <View key={i} style={{ width: 12, height: 28 * h, borderRadius: 5, backgroundColor: c.orangeTint }} />)}
+            {days.map((d, i) => (
+              <View
+                key={d.key}
+                style={{ width: 12, height: steps ? Math.max(4, 28 * (steps[i] / maxSteps)) : 11, borderRadius: 5, backgroundColor: steps && d.key === selected ? c.orange : steps ? c.orangeSoft : c.orangeTint }}
+              />
+            ))}
           </View>
-        </View>
+        </Pressable>
+
         <View style={s.tile}>
           <View style={s.tileRow}>
             <View style={[s.ico, { backgroundColor: c.blueTint }]}><Icon d={P.drop} size={18} color={c.blue} fill={c.blue} sw={0} /></View>
             <Text style={s.tileLabel}>Water</Text>
           </View>
-          <Text style={s.big}>{litres}<Text style={s.bigUnit}> L</Text></Text>
+          <View style={s.waterRow}>
+            <Text style={[s.big, { marginVertical: 0, flex: 1 }]}>{litres}<Text style={s.bigUnit}> L</Text></Text>
+            <Pressable onPress={() => setCount(count - 1)} style={s.pm} hitSlop={6} accessibilityLabel="Remove 250 mL"><Icon d={P.minus} size={16} sw={2.6} color={c.blue} /></Pressable>
+            <Pressable onPress={() => setCount(count + 1)} style={[s.pm, { backgroundColor: c.blue }]} hitSlop={6} accessibilityLabel="Add 250 mL"><Icon d={P.plus} size={16} sw={2.6} color="#fff" /></Pressable>
+          </View>
           <View style={s.drops}>
             {Array.from({ length: 10 }, (_, i) => (
-              <Pressable key={i} onPress={() => tapDrop(i)} hitSlop={{ top: 12, bottom: 12, left: 1, right: 1 }} accessibilityLabel={`Water ${i + 1}`}>
-                <Svg width={11.5} height={15} viewBox="5 2.5 14 19.5"><Path d={P.drop[0]} fill={i < drops ? c.blue : c.blueSoft} /></Svg>
-              </Pressable>
+              <Svg key={i} width={11.5} height={15} viewBox="5 2.5 14 19.5"><Path d={P.drop[0]} fill={i < count ? c.blue : c.blueSoft} /></Svg>
             ))}
           </View>
         </View>
       </View>
 
-      <View style={s.mealsHead}>
-        <Text style={s.h2}>Today's meals</Text>
-        <Text style={s.seeAll}>{selected === dayKey() ? '' : 'Other day'}</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.mealsRow}>
+      <View style={{ marginTop: 18, gap: 12 }}>
         {MEALS.map((m) => (
-          <Pressable key={m.key} style={s.meal} onPress={() => onAdd(m.key, selected)} accessibilityLabel={`Add ${m.label}`}>
-            <Image source={PHOTOS[m.key]} style={s.mealImg} />
-            <Text style={s.mealName}>{m.label}</Text>
-            <View style={s.chip}>
-              <Icon d={P.flame} size={12} fill={c.ink} sw={0} />
-              <Text style={s.chipText}>{fmt(sum(entries.filter((e) => e.meal === m.key), 'kcal'))} kcal</Text>
-            </View>
-          </Pressable>
+          <MealBlock
+            key={m.key}
+            label={m.label}
+            entries={entries.filter((e) => e.meal === m.key)}
+            open={!closed[m.key]}
+            onToggle={() => setClosed((x) => ({ ...x, [m.key]: !x[m.key] }))}
+            onAdd={() => onAdd(m.key, selected)}
+          />
         ))}
-      </ScrollView>
+      </View>
     </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, height: 50 },
-  avatarRing: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: c.lime, padding: 2.5 },
-  avatar: { flex: 1, borderRadius: 25, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
-  avatarLetter: { fontFamily: f.extra, fontSize: 18, color: c.lime },
-  greet: { fontFamily: f.medium, fontSize: 13, color: c.muted, marginBottom: 4 },
-  hello: { fontFamily: f.extra, fontSize: 22, color: c.ink, letterSpacing: -0.5 },
-  bell: { ...card, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  dateBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46 },
+  arrow: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  dateBtn: { paddingVertical: 8, paddingHorizontal: 8 },
+  dateText: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4, minWidth: 130, textAlign: 'center' },
 
-  week: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 14 },
+  week: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 8 },
   day: { width: 45, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', gap: 4 },
   dayL: { fontFamily: f.semi, fontSize: 12, color: c.soft },
   dayN: { fontFamily: f.bold, fontSize: 16, color: c.ink },
@@ -184,16 +226,20 @@ const s = StyleSheet.create({
   tileLabel: { fontFamily: f.semi, fontSize: 13, color: c.muted },
   big: { fontFamily: f.extra, fontSize: 23, color: c.ink, letterSpacing: -0.7, lineHeight: 28, marginTop: 10, marginBottom: 9 },
   bigUnit: { fontFamily: f.semi, fontSize: 13, color: c.muted, letterSpacing: 0 },
+  connect: { fontFamily: f.bold, fontSize: 13, color: c.orange, lineHeight: 28, marginTop: 10, marginBottom: 9 },
   bars: { height: 28, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  waterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, marginTop: 10, marginBottom: 9 },
+  pm: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.blueTint, alignItems: 'center', justifyContent: 'center' },
   drops: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
-  mealsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginTop: 22, marginBottom: 12 },
-  h2: { fontFamily: f.extra, fontSize: 18, color: c.ink, letterSpacing: -0.4 },
-  seeAll: { fontFamily: f.bold, fontSize: 13.5, color: c.limeText },
-  mealsRow: { paddingHorizontal: 20, gap: 12 },
-  meal: { ...card, width: 128, height: 156, borderRadius: 26, paddingTop: 11, paddingBottom: 13, alignItems: 'center' },
-  mealImg: { width: 74, height: 74, borderRadius: 37, borderWidth: 3, borderColor: '#fff' },
-  mealName: { fontFamily: f.bold, fontSize: 14, color: c.ink, marginTop: 10, marginBottom: 7 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: c.lime, borderRadius: 20, paddingVertical: 4, paddingLeft: 7, paddingRight: 9 },
-  chipText: { fontFamily: f.bold, fontSize: 11.5, color: c.ink },
+  block: { ...card, marginHorizontal: 20, borderRadius: 24, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },
+  blockHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  blockName: { fontFamily: f.bold, fontSize: 17, color: c.ink },
+  blockSub: { fontFamily: f.medium, fontSize: 13, color: c.muted, marginTop: 2 },
+  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, marginTop: 4 },
+  itemName: { fontFamily: f.semi, fontSize: 15, color: c.ink },
+  itemSub: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 2 },
+  itemKcal: { fontFamily: f.bold, fontSize: 15, color: c.ink, marginLeft: 12 },
+  addBtn: { alignSelf: 'flex-end', marginTop: 8, backgroundColor: c.tint, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
+  addText: { fontFamily: f.bold, fontSize: 15, color: c.limeText },
 });

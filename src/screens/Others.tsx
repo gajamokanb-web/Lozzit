@@ -1,35 +1,37 @@
 import React, { useMemo } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { c, f } from '../theme';
-import { ACTIVITY, dayKey, fmt, MEALS, sum, targets, weekDays } from '../domain';
+import { ACTIVITY, dayKey, fmt, fmtDay, sum, targets, weekDays } from '../domain';
 import { useStore } from '../store';
 import { card, Screen, Title } from '../ui';
-import { EntryRow } from './AddFood';
+import { enableSteps } from '../steps';
 
-/** Meals: today's log grouped by meal. */
-export function MealsLog() {
-  const { state, removeEntry } = useStore();
-  const today = dayKey();
-  const entries = state.entries.filter((e) => e.day === today);
+/** Logs: every day with something logged, newest first. Tap a day to open it on the dashboard. */
+export function Logs({ onPickDay }: { onPickDay: (k: string) => void }) {
+  const { state } = useStore();
+  const t = targets(state.profile!);
+  const byDay = new Map<string, number>();
+  state.entries.forEach((e) => byDay.set(e.day, (byDay.get(e.day) ?? 0) + e.kcal));
+  const days = [...byDay.keys()].sort().reverse();
   return (
     <Screen>
-      <Title>Today's log</Title>
-      {entries.length === 0 && <Text style={s.empty}>Nothing logged yet. Tap the green button to add your first meal.</Text>}
-      {MEALS.map((m) => {
-        const list = entries.filter((e) => e.meal === m.key);
-        if (!list.length) return null;
-        return (
-          <View key={m.key} style={s.group}>
-            <View style={s.groupHead}>
-              <Text style={s.groupName}>{m.label}</Text>
-              <Text style={s.groupKcal}>{fmt(sum(list, 'kcal'))} kcal</Text>
-            </View>
-            <View style={{ gap: 8 }}>
-              {list.map((e) => <EntryRow key={e.id} name={e.name} kcal={e.kcal} onRemove={() => removeEntry(e.id)} />)}
-            </View>
-          </View>
-        );
-      })}
+      <Title>Logs</Title>
+      {days.length === 0 && <Text style={s.empty}>Nothing logged yet. Tap the green button to add your first meal.</Text>}
+      <View style={{ gap: 10, marginHorizontal: 20 }}>
+        {days.map((k) => {
+          const kcal = byDay.get(k)!;
+          const n = state.entries.filter((e) => e.day === k).length;
+          return (
+            <Pressable key={k} onPress={() => onPickDay(k)} style={[s.logRow, card]}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.logDay}>{k === dayKey() ? 'Today' : fmtDay(k)}</Text>
+                <Text style={s.logSub}>{n} {n === 1 ? 'item' : 'items'}</Text>
+              </View>
+              <Text style={[s.logKcal, kcal > t.kcal && { color: c.orange }]}>{fmt(kcal)}<Text style={s.logUnit}> / {fmt(t.kcal)}</Text></Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </Screen>
   );
 }
@@ -72,7 +74,7 @@ export function Stats() {
 }
 
 export function Profile() {
-  const { state, reset } = useStore();
+  const { state, reset, setSettings } = useStore();
   const p = state.profile!;
   const t = targets(p);
   const act = ACTIVITY.find((a) => a.v === p.activity)?.label ?? '';
@@ -83,6 +85,17 @@ export function Profile() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete and restart', style: 'destructive', onPress: go },
     ]);
+  };
+  const toggleFit = async (on: boolean) => {
+    if (!on) return setSettings({ fit: false });
+    const r = await enableSteps();
+    if (r === 'ok') return setSettings({ fit: true });
+    Alert.alert(
+      r === 'denied' ? 'Permission needed' : 'Health Connect not available',
+      r === 'denied'
+        ? 'Allow Lozzit to read your steps in the Health Connect permission screen, then try again.'
+        : 'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.',
+    );
   };
   const rows: [string, string][] = [
     ['Age', `${p.age}`],
@@ -106,6 +119,16 @@ export function Profile() {
             <Text style={s.liV}>{v}</Text>
           </View>
         ))}
+      </View>
+      <Text style={s.sect}>Settings</Text>
+      <View style={[s.list, card]}>
+        <View style={[s.li, { alignItems: 'center' }]}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={s.liT}>Sync steps with Google Fit</Text>
+            <Text style={s.liS}>Reads your daily steps through Health Connect, where Google Fit saves them.</Text>
+          </View>
+          <Switch value={state.settings.fit} onValueChange={toggleFit} trackColor={{ true: c.lime, false: c.line }} thumbColor="#fff" />
+        </View>
       </View>
       <Pressable onPress={confirmReset} style={s.reset} accessibilityRole="button">
         <Text style={s.resetText}>Start over with a new profile</Text>
@@ -139,6 +162,14 @@ const s = StyleSheet.create({
   li: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15 },
   liK: { fontFamily: f.medium, fontSize: 14, color: c.muted },
   liV: { fontFamily: f.bold, fontSize: 14, color: c.ink },
+  sect: { fontFamily: f.extra, fontSize: 17, color: c.ink, marginHorizontal: 20, marginTop: 24, marginBottom: 10 },
+  liT: { fontFamily: f.bold, fontSize: 15, color: c.ink },
+  liS: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 3, lineHeight: 18 },
+  logRow: { borderRadius: 22, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center' },
+  logDay: { fontFamily: f.bold, fontSize: 16, color: c.ink },
+  logSub: { fontFamily: f.medium, fontSize: 12.5, color: c.muted, marginTop: 2 },
+  logKcal: { fontFamily: f.extra, fontSize: 17, color: c.ink },
+  logUnit: { fontFamily: f.semi, fontSize: 12.5, color: c.muted },
   reset: { alignSelf: 'center', marginTop: 24, paddingVertical: 12, paddingHorizontal: 18 },
   resetText: { fontFamily: f.bold, fontSize: 14, color: c.red },
 });
