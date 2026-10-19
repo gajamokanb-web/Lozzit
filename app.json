@@ -35,6 +35,13 @@
             "minSdkVersion": 26
           }
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Lozzit uses the camera to scan food barcodes.",
+          "recordAudioAndroid": false
+        }
       ]
     ]
   }

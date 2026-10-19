@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { c, f } from '../theme';
 import { ACTIVITY, dayKey, fmt, fmtDay, sum, targets, weekDays } from '../domain';
 import { useStore } from '../store';
 import { card, Screen, Title } from '../ui';
-import { enableSteps } from '../steps';
+import { enableSteps, listStepSources, sourceName } from '../steps';
 
 /** Logs: every day with something logged, newest first. Tap a day to open it on the dashboard. */
 export function Logs({ onPickDay }: { onPickDay: (k: string) => void }) {
@@ -86,6 +86,11 @@ export function Profile() {
       { text: 'Delete and restart', style: 'destructive', onPress: go },
     ]);
   };
+  const [picker, setPicker] = useState(false);
+  const [sources, setSources] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (picker) { setSources(null); listStepSources().then(setSources); }
+  }, [picker]);
   const toggleFit = async (on: boolean) => {
     if (!on) return setSettings({ fit: false });
     const r = await enableSteps();
@@ -124,12 +129,38 @@ export function Profile() {
       <View style={[s.list, card]}>
         <View style={[s.li, { alignItems: 'center' }]}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={s.liT}>Sync steps with Google Fit</Text>
-            <Text style={s.liS}>Reads your daily steps through Health Connect, where Google Fit saves them.</Text>
+            <Text style={s.liT}>Sync steps</Text>
+            <Text style={s.liS}>Reads your daily steps through Health Connect: Google Fit, Mi Fitness (Mi Band), Samsung Health…</Text>
           </View>
           <Switch value={state.settings.fit} onValueChange={toggleFit} trackColor={{ true: c.lime, false: c.line }} thumbColor="#fff" />
         </View>
+        {state.settings.fit && (
+          <Pressable onPress={() => setPicker(true)} style={[s.li, { borderTopWidth: 1, borderTopColor: c.line, alignItems: 'center' }]} accessibilityRole="button">
+            <Text style={s.liT}>Steps source</Text>
+            <Text style={[s.liV, { color: c.limeText }]}>{sourceName(state.settings.stepSource)}</Text>
+          </Pressable>
+        )}
       </View>
+      <Text style={s.credit}>Food data: Anses Ciqual 2025 (Licence Ouverte Etalab 2.0) · Open Food Facts (ODbL)</Text>
+      <Modal visible={picker} transparent animationType="fade" onRequestClose={() => setPicker(false)} statusBarTranslucent>
+        <View style={s.mWrap}>
+          <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={() => setPicker(false)} />
+          <View style={s.mCard}>
+            <Text style={s.mTitle}>Steps source</Text>
+            {['all', ...(sources ?? [])].map((pkg) => (
+              <Pressable key={pkg} onPress={() => { setSettings({ stepSource: pkg }); setPicker(false); }} style={s.mRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.liT}>{sourceName(pkg)}</Text>
+                  <Text style={s.liS}>{pkg === 'all' ? 'Android merges every app and avoids double counting' : pkg}</Text>
+                </View>
+                <View style={[s.radio, state.settings.stepSource === pkg && { borderColor: c.ink, backgroundColor: c.ink }]} />
+              </Pressable>
+            ))}
+            {sources && sources.length === 0 && <Text style={s.liS}>No step data found yet. Open Mi Fitness or Google Fit, sync, and enable Health Connect sharing there.</Text>}
+            {sources === null && <Text style={s.liS}>Looking for apps…</Text>}
+          </View>
+        </View>
+      </Modal>
       <Pressable onPress={confirmReset} style={s.reset} accessibilityRole="button">
         <Text style={s.resetText}>Start over with a new profile</Text>
       </Pressable>
@@ -170,6 +201,12 @@ const s = StyleSheet.create({
   logSub: { fontFamily: f.medium, fontSize: 12.5, color: c.muted, marginTop: 2 },
   logKcal: { fontFamily: f.extra, fontSize: 17, color: c.ink },
   logUnit: { fontFamily: f.semi, fontSize: 12.5, color: c.muted },
+  credit: { fontFamily: f.regular, fontSize: 11.5, color: c.soft, marginHorizontal: 20, marginTop: 10, textAlign: 'center' },
+  mWrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.4)', justifyContent: 'center', paddingHorizontal: 20 },
+  mCard: { backgroundColor: '#fff', borderRadius: 28, padding: 20, gap: 4 },
+  mTitle: { fontFamily: f.extra, fontSize: 18, color: c.ink, marginBottom: 8 },
+  mRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: c.line },
   reset: { alignSelf: 'center', marginTop: 24, paddingVertical: 12, paddingHorizontal: 18 },
   resetText: { fontFamily: f.bold, fontSize: 14, color: c.red },
 });

@@ -9,7 +9,26 @@ export type Profile = {
   activity: number; // PAL multiplier
 };
 export type MealKey = 'breakfast' | 'snack_am' | 'lunch' | 'snack_pm' | 'dinner' | 'snack_eve';
-export type Entry = { id: string; day: string; meal: MealKey; name: string; kcal: number; p: number; c: number; f: number };
+export type Per = { kcal: number; p: number; c: number; f: number };
+/** Nutrition for `size` units. Foods: per 100 g/ml. Quick-add items: the whole serving (size 1, 'srv'). */
+export type Base = Per & { size: number; unit: 'g' | 'ml' | 'srv' };
+export type Entry = {
+  id: string; day: string; meal: MealKey; name: string; brand?: string;
+  kcal: number; p: number; c: number; f: number; // totals for `qty`
+  base?: Base; qty?: number; fk?: string; portion?: { label: string; size: number };
+};
+
+const r1 = (n: number) => Math.round(n * 10) / 10;
+/** Totals for `qty` units of a base. */
+export const scale = (b: Base, qty: number): Per => ({
+  kcal: Math.round((b.kcal * qty) / b.size),
+  p: r1((b.p * qty) / b.size),
+  c: r1((b.c * qty) / b.size),
+  f: r1((b.f * qty) / b.size),
+});
+/** Base + quantity of any entry, including ones saved before quantities existed. */
+export const entryBase = (e: Entry): { base: Base; qty: number } =>
+  e.base ? { base: e.base, qty: e.qty ?? e.base.size } : { base: { kcal: e.kcal, p: e.p, c: e.c, f: e.f, size: 1, unit: 'srv' }, qty: 1 };
 
 export const MEALS: { key: MealKey; label: string }[] = [
   { key: 'breakfast', label: 'Breakfast' },

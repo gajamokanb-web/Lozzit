@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f } from '../theme';
-import { addDays, dayKey, fmt, fmtDay, MEALS, parseKey, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
+import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
 import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
@@ -42,7 +42,7 @@ function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekD
   );
 }
 
-function MealBlock({ label, entries, open, onToggle, onAdd }: { label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void }) {
+function MealBlock({ label, entries, open, onToggle, onAdd, onEdit }: { label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
   const total = sum(entries, 'kcal');
   return (
     <View style={s.block}>
@@ -56,9 +56,11 @@ function MealBlock({ label, entries, open, onToggle, onAdd }: { label: string; e
       {open && (
         <>
           {entries.map((e) => {
-            const macros = [e.p && `P ${Math.round(e.p)}`, e.c && `C ${Math.round(e.c)}`, e.f && `F ${Math.round(e.f)}`].filter(Boolean).join(' · ');
+            const { base, qty } = entryBase(e);
+            const amount = base.unit === 'srv' ? (qty === 1 ? '1 serving' : `${qty} servings`) : `${qty} ${base.unit}`;
+            const macros = [amount, e.brand].filter(Boolean).join(' · ');
             return (
-              <Pressable key={e.id} onPress={onAdd} style={s.item}>
+              <Pressable key={e.id} onPress={() => onEdit(e.id)} style={s.item} accessibilityLabel={`Edit ${e.name}`}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName} numberOfLines={1}>{e.name}</Text>
                   {macros ? <Text style={s.itemSub}>{macros}</Text> : null}
@@ -76,11 +78,12 @@ function MealBlock({ label, entries, open, onToggle, onAdd }: { label: string; e
   );
 }
 
-export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }: {
+export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSettings }: {
   selected: string;
   onSelect: (k: string) => void;
   onOpenCalendar: () => void;
   onAdd: (meal: MealKey, day: string) => void;
+  onEdit: (entry: Entry) => void;
   onGoSettings: () => void;
 }) {
   const { state, setWater } = useStore();
@@ -89,7 +92,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }
   const [closed, setClosed] = useState<Partial<Record<MealKey, boolean>>>({});
 
   const days = useMemo(() => weekDays(parseKey(selected)), [selected]);
-  const steps = useSteps(days.map((d) => d.key), state.settings.fit);
+  const steps = useSteps(days.map((d) => d.key), state.settings.fit, state.settings.stepSource);
   const selIdx = days.findIndex((d) => d.key === selected);
   const maxSteps = steps ? Math.max(1, ...steps) : 1;
 
@@ -149,7 +152,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }
           {state.settings.fit ? (
             <Text style={s.big}>{steps && selIdx >= 0 ? fmt(steps[selIdx]) : '…'}</Text>
           ) : (
-            <Text style={s.connect}>Connect Google Fit</Text>
+            <Text style={s.connect}>Connect steps</Text>
           )}
           <View style={s.bars}>
             {days.map((d, i) => (
@@ -164,13 +167,11 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }
         <View style={s.tile}>
           <View style={s.tileRow}>
             <View style={[s.ico, { backgroundColor: c.blueTint }]}><Icon d={P.drop} size={18} color={c.blue} fill={c.blue} sw={0} /></View>
-            <Text style={s.tileLabel}>Water</Text>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={() => setCount(count - 1)} style={s.pm} hitSlop={6} accessibilityLabel="Remove 250 mL"><Icon d={P.minus} size={14} sw={2.8} color={c.blue} /></Pressable>
+            <Pressable onPress={() => setCount(count + 1)} style={[s.pm, { backgroundColor: c.blue }]} hitSlop={6} accessibilityLabel="Add 250 mL"><Icon d={P.plus} size={14} sw={2.8} color="#fff" /></Pressable>
           </View>
-          <View style={s.waterRow}>
-            <Text style={[s.big, { marginVertical: 0, flex: 1 }]}>{litres}<Text style={s.bigUnit}> L</Text></Text>
-            <Pressable onPress={() => setCount(count - 1)} style={s.pm} hitSlop={6} accessibilityLabel="Remove 250 mL"><Icon d={P.minus} size={16} sw={2.6} color={c.blue} /></Pressable>
-            <Pressable onPress={() => setCount(count + 1)} style={[s.pm, { backgroundColor: c.blue }]} hitSlop={6} accessibilityLabel="Add 250 mL"><Icon d={P.plus} size={16} sw={2.6} color="#fff" /></Pressable>
-          </View>
+          <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.1}>{litres}<Text style={s.bigUnit}> L</Text></Text>
           <View style={s.drops}>
             {Array.from({ length: 10 }, (_, i) => (
               <Svg key={i} width={11.5} height={15} viewBox="5 2.5 14 19.5"><Path d={P.drop[0]} fill={i < count ? c.blue : c.blueSoft} /></Svg>
@@ -188,6 +189,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onGoSettings }
             open={!closed[m.key]}
             onToggle={() => setClosed((x) => ({ ...x, [m.key]: !x[m.key] }))}
             onAdd={() => onAdd(m.key, selected)}
+            onEdit={(id) => onEdit(entries.find((x) => x.id === id)!)}
           />
         ))}
       </View>
@@ -220,16 +222,15 @@ const s = StyleSheet.create({
   fill: { height: 8, borderRadius: 4, backgroundColor: c.ink },
 
   tiles: { flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 14 },
-  tile: { ...card, flex: 1, height: 136, borderRadius: 26, padding: 14 },
+  tile: { ...card, flex: 1, height: 142, borderRadius: 26, padding: 14 },
   tileRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   ico: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   tileLabel: { fontFamily: f.semi, fontSize: 13, color: c.muted },
-  big: { fontFamily: f.extra, fontSize: 23, color: c.ink, letterSpacing: -0.7, lineHeight: 28, marginTop: 10, marginBottom: 9 },
+  big: { fontFamily: f.extra, fontSize: 23, color: c.ink, letterSpacing: -0.7, lineHeight: 32, paddingVertical: 2, marginTop: 8, marginBottom: 8 },
   bigUnit: { fontFamily: f.semi, fontSize: 13, color: c.muted, letterSpacing: 0 },
-  connect: { fontFamily: f.bold, fontSize: 13, color: c.orange, lineHeight: 28, marginTop: 10, marginBottom: 9 },
+  connect: { fontFamily: f.bold, fontSize: 13, color: c.orange, lineHeight: 32, marginTop: 8, marginBottom: 8 },
   bars: { height: 28, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  waterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, marginTop: 10, marginBottom: 9 },
-  pm: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.blueTint, alignItems: 'center', justifyContent: 'center' },
+  pm: { width: 26, height: 26, borderRadius: 13, marginLeft: 4, backgroundColor: c.blueTint, alignItems: 'center', justifyContent: 'center' },
   drops: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
   block: { ...card, marginHorizontal: 20, borderRadius: 24, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },

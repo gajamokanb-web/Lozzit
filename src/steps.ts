@@ -26,8 +26,34 @@ export async function enableSteps(): Promise<EnableResult> {
   }
 }
 
-/** Total steps for each day key, or null if Health Connect can't be read. */
-export async function readSteps(keys: string[]): Promise<number[] | null> {
+export const SOURCE_NAMES: Record<string, string> = {
+  'com.google.android.apps.fitness': 'Google Fit',
+  'com.google.android.apps.healthdata': 'Health Connect',
+  'com.google.android.gms': 'Google (Play services)',
+  'com.fitbit.FitbitMobile': 'Fitbit / Google Health',
+  'com.mi.health': 'Mi Fitness',
+  'com.xiaomi.wearable': 'Mi Fitness (Xiaomi Wear)',
+  'com.sec.android.app.shealth': 'Samsung Health',
+};
+export const sourceName = (pkg: string) => (pkg === 'all' ? 'All sources' : SOURCE_NAMES[pkg] ?? pkg);
+
+/** Apps that wrote step data in the last 30 days (Health Connect package names). */
+export async function listStepSources(): Promise<string[]> {
+  const m = hc();
+  if (!m) return [];
+  try {
+    if (!(await m.initialize())) return [];
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 86400000);
+    const r = await m.aggregateRecord({ recordType: 'Steps', timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() } });
+    return [...(r.dataOrigins ?? [])];
+  } catch {
+    return [];
+  }
+}
+
+/** Total steps for each day key, or null if Health Connect can't be read. source: 'all' or a package name. */
+export async function readSteps(keys: string[], source: string = 'all'): Promise<number[] | null> {
   const m = hc();
   if (!m) return null;
   try {
@@ -39,6 +65,7 @@ export async function readSteps(keys: string[]): Promise<number[] | null> {
         const r = await m.aggregateRecord({
           recordType: 'Steps',
           timeRangeFilter: { operator: 'between', startTime: s.toISOString(), endTime: e.toISOString() },
+          ...(source !== 'all' ? { dataOriginFilter: [source] } : {}),
         });
         return r.COUNT_TOTAL ?? 0;
       }),
@@ -49,7 +76,7 @@ export async function readSteps(keys: string[]): Promise<number[] | null> {
 }
 
 /** Steps for the given days; refreshes when the app comes back to the foreground. */
-export function useSteps(keys: string[], enabled: boolean) {
+export function useSteps(keys: string[], enabled: boolean, source: string = 'all') {
   const [steps, setSteps] = useState<number[] | null>(null);
   const id = keys.join(',');
   useEffect(() => {
@@ -58,7 +85,7 @@ export function useSteps(keys: string[], enabled: boolean) {
       return;
     }
     let live = true;
-    const load = () => readSteps(id.split(',')).then((r) => live && setSteps(r));
+    const load = () => readSteps(id.split(','), source).then((r) => live && setSteps(r));
     load();
     const sub = AppState.addEventListener('change', (st) => st === 'active' && load());
     const timer = setInterval(load, 60000);
@@ -67,6 +94,6 @@ export function useSteps(keys: string[], enabled: boolean) {
       sub.remove();
       clearInterval(timer);
     };
-  }, [id, enabled]);
+  }, [id, enabled, source]);
   return steps;
 }

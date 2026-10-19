@@ -2,9 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Entry, Profile } from './domain';
 
-type Settings = { fit: boolean };
+type Settings = { fit: boolean; stepSource: string }; // stepSource: 'all' or a Health Connect package name
 type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; settings: Settings };
-const EMPTY: State = { profile: null, entries: [], water: {}, settings: { fit: false } };
+const EMPTY: State = { profile: null, entries: [], water: {}, settings: { fit: false, stepSource: 'all' } };
 const KEY = 'lozzit:v1';
 
 type Store = {
@@ -13,6 +13,7 @@ type Store = {
   setProfile: (p: Profile) => void;
   addEntry: (e: Omit<Entry, 'id'>) => void;
   removeEntry: (id: string) => void;
+  updateEntry: (id: string, patch: Partial<Entry>) => void;
   setWater: (day: string, drops: number) => void;
   setSettings: (s: Partial<Settings>) => void;
   reset: () => void;
@@ -51,13 +52,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
   const removeEntry = useCallback((id: string) => setState((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) })), []);
+  const updateEntry = useCallback((id: string, patch: Partial<Entry>) => setState((s) => ({ ...s, entries: s.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) })), []);
   const setWater = useCallback((day: string, drops: number) => setState((s) => ({ ...s, water: { ...s.water, [day]: drops } })), []);
   const setSettings = useCallback((p: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...p } })), []);
   const reset = useCallback(() => setState(EMPTY), []);
 
   const value = useMemo(
-    () => ({ ready, state, setProfile, addEntry, removeEntry, setWater, setSettings, reset }),
-    [ready, state, setProfile, addEntry, removeEntry, setWater, setSettings, reset],
+    () => ({ ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setSettings, reset }),
+    [ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setSettings, reset],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
