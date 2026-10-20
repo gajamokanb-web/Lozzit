@@ -1,3 +1,5 @@
+import { getLang } from './i18n';
+import { frFormula } from './fr';
 export type Sex = 'f' | 'm';
 export type Profile = {
   name: string;
@@ -98,7 +100,7 @@ export function weekDays(base: Date = new Date()) {
   const todayKey = dayKey();
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    return { key: dayKey(d), letter: 'MTWTFSS'[i], date: d.getDate(), isToday: dayKey(d) === todayKey };
+    return { key: dayKey(d), letter: (getLang() === 'fr' ? 'LMMJVSD' : 'MTWTFSS')[i], date: d.getDate(), isToday: dayKey(d) === todayKey };
   });
 }
 
@@ -161,7 +163,7 @@ export function budgetFor(p: Profile, key: MethodKey = p.method ?? 'mifflin') {
   const { adj, why } = goalAdjust(p);
   const raw = tdee + adj;
   const kcal = Math.max(1200, Math.round(raw / 10) * 10);
-  return { method: m, bmr, text, tdee, adj, why, raw, kcal, floored: raw < 1200 };
+  return { method: m, bmr, text: getLang() === 'fr' ? frFormula(text) : text, tdee, adj, why, raw, kcal, floored: raw < 1200 };
 }
 export const autoBudget = (p: Profile) => budgetFor(p, p.method ?? 'mifflin').kcal;
 export function autoMacros(p: Profile, kcal: number) {
@@ -204,4 +206,4 @@ export function targets(p: Profile): Targets {
 }
 
 export const sum = (es: Entry[], k: 'kcal' | 'p' | 'c' | 'f' | 'sg' | 'sl' | 'fi' | 'sf') => es.reduce((a, e) => a + (e[k] ?? 0), 0);
-export const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+export const fmt = (n: number) => { const t = Math.round(n).toLocaleString('en-US'); return getLang() === 'fr' ? t.replace(/,/g, '\u202f') : t; };

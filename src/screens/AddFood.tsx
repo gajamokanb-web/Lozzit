@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../i18n';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { c, f } from '../theme';
+import { c, f, onTheme } from '../theme';
 import { entryBase, EXTRAS, fmt, fmtDay, MEALS, scale, scaleEntry, sum, type Base, type Entry, type MealKey, type Per } from '../domain';
 import { letterOf, lookupBarcode, searchCiqual, searchMine, sortKey, type Food } from '../foods';
 import { readLabel, DEFAULT_MODEL } from '../vision';
@@ -285,13 +286,13 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
   const openLabel = async () => {
     setLabelMsg('');
-    if (!state.settings.geminiKey.trim()) return setLabelMsg('Add your Google AI Studio API key first: Profile → AI label scan.');
+    if (!state.settings.groqKey.trim()) return setLabelMsg('Add your Groq API key first: Profile → AI label scan.');
     if (!perm?.granted) { const r = await askPerm(); if (!r.granted) return setLabelMsg('Camera permission is needed to photograph the label.'); }
     setMode('label');
   };
   const openGallery = async () => {
     setLabelMsg('');
-    if (!state.settings.geminiKey.trim()) return setLabelMsg('Add your Google AI Studio API key first: Profile → AI label scan.');
+    if (!state.settings.groqKey.trim()) return setLabelMsg('Add your Groq API key first: Profile → AI label scan.');
     try {
       const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, base64: true });
       if (r.canceled) return;
@@ -319,7 +320,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     if (labelBusy || !shot) return;
     setLabelBusy(true); setLabelMsg('');
     try {
-      const r = await readLabel(shot.b64, state.settings.geminiKey.trim(), state.settings.geminiModel.trim() || DEFAULT_MODEL);
+      const r = await readLabel(shot.b64, state.settings.groqKey.trim(), state.settings.groqModel.trim() || DEFAULT_MODEL);
       setNUnit('g');
       setNKcal(String(r.per.kcal)); setNP(String(r.per.p)); setNC(String(r.per.c)); setNF(String(r.per.f));
       setNX(EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')));
@@ -411,7 +412,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           <>
             <View style={s.tabs}>
               {([['search', 'Search'], ['mine', 'My Foods'], ['meals', 'Meals']] as const).map(([k, l]) => (
-                <Pressable key={k} onPress={() => setTab(k)} style={[s.tabB, tab === k && { backgroundColor: c.ink }]} accessibilityRole="button">
+                <Pressable key={k} onPress={() => setTab(k)} style={[s.tabB, tab === k && { backgroundColor: c.btn }]} accessibilityRole="button">
                   <Text style={[s.tabT, tab === k && { color: c.lime }]}>{l}</Text>
                 </Pressable>
               ))}
@@ -479,7 +480,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
             {tab === 'meals' && (
               <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20, gap: 12 }}>
-                <Text style={s.hintS}>Copy a meal from a previous day into {mealLabel.toLowerCase()}.</Text>
+                <Text style={s.hintS}>{`Copy a meal from a previous day into ${mealLabel.toLowerCase()}.`}</Text>
                 {blocks.length === 0 && <Text style={s.hint}>Meals you have logged will appear here, most recent first.</Text>}
                 {blocks.map((b) => {
                   const label = MEALS.find((m) => m.key === b.meal)!.label;
@@ -578,22 +579,13 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         {mode === 'create' && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
             {!editKey && (
-              <View style={{ gap: 8 }}>
               <Pressable onPress={openLabel} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Scan nutrition label">
                 <Icon d={P.camera} size={20} color={c.limeText} sw={2.2} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.quickT}>Scan the nutrition label</Text>
-                  <Text style={s.resSub}>Photo read by Google Gemini (your API key)</Text>
+                  <Text style={s.resSub}>Photo read by Groq AI (your API key)</Text>
                 </View>
               </Pressable>
-              <Pressable onPress={openGallery} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Pick a label photo from the gallery">
-                <Icon d={P.image} size={20} color={c.limeText} sw={2.2} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.quickT}>Choose a photo from the gallery</Text>
-                  <Text style={s.resSub}>Use a picture you already took</Text>
-                </View>
-              </Pressable>
-              </View>
             )}
             {labelMsg ? <Text style={[s.hintS, { color: /^Values|^Only/.test(labelMsg) ? c.limeText : c.red }]}>{labelMsg}</Text> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -616,7 +608,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               <Text style={s.fieldL}>Values per 100</Text>
               {(['g', 'ml'] as const).map((u) => (
-                <Pressable key={u} onPress={() => setNUnit(u)} style={[s.mchip, nUnit === u && { backgroundColor: c.ink }]}>
+                <Pressable key={u} onPress={() => setNUnit(u)} style={[s.mchip, nUnit === u && { backgroundColor: c.btn }]}>
                   <Text style={[s.mchipText, nUnit === u && { color: c.lime }]}>{u}</Text>
                 </Pressable>
               ))}
@@ -668,10 +660,10 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 </View>
               )}
             </View>
-            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Fit the whole nutrition table in the frame, then take the photo. The photo is sent to Google and not kept.</Text>}
+            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Fit the whole nutrition table in the frame, then take the photo. The photo is sent to Groq and not kept.</Text>}
             <View style={{ alignItems: 'center', justifyContent: 'center', marginBottom: Math.max(bottom, 12) + 8 }}>
               <Pressable onPress={snapLabel} style={s.shutter} accessibilityRole="button" accessibilityLabel="Take photo"><View style={s.shutterIn} /></Pressable>
-              <Pressable onPress={openGallery} style={[s.galBtn]} accessibilityRole="button" accessibilityLabel="Pick from the gallery"><Icon d={P.image} size={24} color={c.ink} sw={2} /></Pressable>
+              <Pressable onPress={openGallery} style={[s.galBtn]} accessibilityRole="button" accessibilityLabel="Pick from the gallery"><Icon d={P.image} size={26} color={c.ink} sw={2.2} /></Pressable>
             </View>
           </View>
         )}
@@ -734,7 +726,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 <TextInput style={s.qtyIn} value={qty} onChangeText={setQty} keyboardType="decimal-pad" maxLength={6} selectionColor={c.lime} selectTextOnFocus accessibilityLabel="Quantity" />
                 <Text style={s.unit}>{unitLabel(food.base.unit, q)}</Text>
               </View>
-              <Pressable onPress={() => setQty(String(+(q + step).toFixed(2)))} style={[s.stepper, { backgroundColor: c.ink }]} hitSlop={6} accessibilityLabel="More"><Icon d={P.plus} size={20} sw={2.6} color={c.lime} /></Pressable>
+              <Pressable onPress={() => setQty(String(+(q + step).toFixed(2)))} style={[s.stepper, { backgroundColor: c.btn }]} hitSlop={6} accessibilityLabel="More"><Icon d={P.plus} size={20} sw={2.6} color={c.lime} /></Pressable>
             </View>
             {food.portion && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -788,7 +780,7 @@ function MealChips({ meal, setMeal }: { meal: MealKey; setMeal: (m: MealKey) => 
   return (
     <View style={s.chips}>
       {MEALS.filter((m) => m.key === meal || state.settings.meals.includes(m.key)).map((m) => (
-        <Pressable key={m.key} onPress={() => setMeal(m.key)} style={[s.mchip, meal === m.key && { backgroundColor: c.ink }]}>
+        <Pressable key={m.key} onPress={() => setMeal(m.key)} style={[s.mchip, meal === m.key && { backgroundColor: c.btn }]}>
           <Text style={[s.mchipText, meal === m.key && { color: c.lime }]}>{m.label}</Text>
         </Pressable>
       ))}
@@ -796,7 +788,7 @@ function MealChips({ meal, setMeal }: { meal: MealKey; setMeal: (m: MealKey) => 
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 10 },
   round: { width: 42, height: 42, borderRadius: 21, ...card, alignItems: 'center', justifyContent: 'center' },
   h: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4 },
@@ -823,7 +815,7 @@ const s = StyleSheet.create({
   letterHeadT: { fontFamily: f.extra, fontSize: 15, color: c.limeText },
   bar: { position: 'absolute', right: 0, top: 4, bottom: 8, width: 30, paddingVertical: 2 },
   barL: { fontFamily: f.bold, fontSize: 10.5, color: c.muted, lineHeight: 13 },
-  bubble: { position: 'absolute', right: 48, top: '40%', width: 64, height: 64, borderRadius: 32, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  bubble: { position: 'absolute', right: 48, top: '40%', width: 64, height: 64, borderRadius: 32, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   bubbleT: { fontFamily: f.extra, fontSize: 28, color: c.lime },
   mealCard: { borderRadius: 22, padding: 14 },
   mealDay: { fontFamily: f.extra, fontSize: 16, color: c.ink },
@@ -844,8 +836,8 @@ const s = StyleSheet.create({
   torch: { position: 'absolute', top: 14, right: 14, width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   labelBtn: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   labelFrame: { width: '86%', height: '70%', borderRadius: 20, borderWidth: 3, borderColor: c.lime },
-  shutter: { alignSelf: 'center', width: 74, height: 74, borderRadius: 37, borderWidth: 4, borderColor: c.ink, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
-  galBtn: { position: 'absolute', left: 28, width: 52, height: 52, borderRadius: 26, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.line },
+  shutter: { alignSelf: 'center', width: 74, height: 74, borderRadius: 37, borderWidth: 4, borderColor: c.btn, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  galBtn: { position: 'absolute', left: 28, width: 56, height: 56, borderRadius: 28, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: c.lime },
   prevBtn: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   shutterIn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.lime },
   pencil: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.tint, alignItems: 'center', justifyContent: 'center' },
@@ -866,9 +858,11 @@ const s = StyleSheet.create({
   pchip: { backgroundColor: c.tint, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
   pchipT: { fontFamily: f.bold, fontSize: 12.5, color: c.limeText },
   sum: { backgroundColor: c.lime, borderRadius: 26, padding: 18 },
-  sumBig: { fontFamily: f.extra, fontSize: 34, color: c.ink, letterSpacing: -1 },
+  sumBig: { fontFamily: f.extra, fontSize: 34, color: c.onLime, letterSpacing: -1 },
   sumUnit: { fontFamily: f.bold, fontSize: 15, letterSpacing: 0 },
-  sumMacros: { fontFamily: f.semi, fontSize: 13, color: c.ink, opacity: 0.8, marginTop: 4 },
-  cta: { height: 56, borderRadius: 28, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  sumMacros: { fontFamily: f.semi, fontSize: 13, color: c.onLime, opacity: 0.8, marginTop: 4 },
+  cta: { height: 56, borderRadius: 28, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   ctaText: { fontFamily: f.bold, fontSize: 16, color: c.lime },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

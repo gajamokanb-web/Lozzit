@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { c, f } from '../theme';
+import { c, f, onTheme } from '../theme';
 import { MEALS, type MealKey } from '../domain';
 import { useStore } from '../store';
 import { Disc, Icon, MealIcon, P } from '../ui';
@@ -110,7 +111,7 @@ export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onM
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(21,32,15,0.45)' },
   sheet: { backgroundColor: c.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 22, paddingHorizontal: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -128,8 +129,10 @@ const s = StyleSheet.create({
   sub: { fontFamily: f.medium, fontSize: 13, color: c.muted },
   weightBox: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', backgroundColor: c.page, borderRadius: 24, paddingVertical: 10, gap: 6 },
   weightIn: { fontFamily: f.extra, fontSize: 38, color: c.ink, letterSpacing: -1, minWidth: 100, textAlign: 'right', paddingVertical: 0 },
-  cta: { height: 56, borderRadius: 28, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  cta: { height: 56, borderRadius: 28, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   ctaT: { fontFamily: f.bold, fontSize: 16, color: c.lime },
   linkW: { alignSelf: 'center', padding: 8 },
   link: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

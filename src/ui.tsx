@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './i18n';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { c, f } from './theme';
+import { c, f, onTheme } from './theme';
 import type { MealKey } from './domain';
 
 export const P = {
@@ -60,7 +61,8 @@ export const MEAL_STYLE: Record<MealKey, { d: string[]; bg: string }> = {
 };
 export const MealIcon = ({ k, size = 44 }: { k: MealKey; size?: number }) => <Disc d={MEAL_STYLE[k].d} bg={MEAL_STYLE[k].bg} size={size} />;
 
-export const card = { backgroundColor: c.card, borderWidth: 1, borderColor: c.line } as const;
+export const card: { backgroundColor: string; borderWidth: number; borderColor: string } = { backgroundColor: c.card, borderWidth: 1, borderColor: c.line };
+onTheme(() => { card.backgroundColor = c.card; card.borderColor = c.line; });
 
 export type Tab = 'home' | 'stats' | 'meals' | 'profile';
 
@@ -107,11 +109,13 @@ export function BottomNav({ tab, onTab, onAdd }: { tab: Tab; onTab: (t: Tab) => 
   );
 }
 
-export const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   title: { fontFamily: f.extra, fontSize: 26, color: c.ink, letterSpacing: -0.6, marginHorizontal: 20, marginBottom: 14 },
   navWrap: { position: 'absolute', left: 16, right: 16 },
   nav: { ...card, height: 72, borderRadius: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4, elevation: 8, shadowColor: c.ink, shadowOpacity: 0.1, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
   tab: { width: 68, height: 56, alignItems: 'center', justifyContent: 'center', gap: 4 },
   tabLabel: { fontFamily: f.semi, fontSize: 10.5, color: c.soft },
-  scan: { position: 'absolute', alignSelf: 'center', top: -24, width: 66, height: 66, borderRadius: 33, backgroundColor: c.lime, borderWidth: 5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 10 },
+  scan: { position: 'absolute', alignSelf: 'center', top: -24, width: 66, height: 66, borderRadius: 33, backgroundColor: c.lime, borderWidth: 5, borderColor: c.card, alignItems: 'center', justifyContent: 'center', elevation: 10 },
 });
+export let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

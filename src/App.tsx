@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { useColorScheme, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -10,7 +10,8 @@ import {
   PlusJakartaSans_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
-import { c } from './theme';
+import { applyTheme, c } from './theme';
+import { setLang } from './i18n';
 import { dayKey, type MealKey } from './domain';
 import { StoreProvider, useStore } from './store';
 import { BottomNav, type Tab } from './ui';
@@ -30,6 +31,7 @@ function hourMeal(enabled: MealKey[]): MealKey {
 
 function Root() {
   const { ready, state, setProfile, setWeight } = useStore();
+  const scheme = useColorScheme();
   const [tab, setTab] = useState<Tab>('home');
   const [selected, setSelected] = useState(dayKey());
   const [calendar, setCalendar] = useState(false);
@@ -38,11 +40,18 @@ function Root() {
   const [sheetOn, setSheetOn] = useState(false);
   const openSheet = (v: SheetView) => { setSheet(v); setSheetOn(true); };
 
+  const mode = state.settings.theme === 'system' ? (scheme === 'dark' ? 'dark' : 'light') : state.settings.theme;
+  // swap the live palette / language before children render; the key remounts them with fresh styles
+  applyTheme(mode);
+  setLang(state.settings.lang);
+  const skin = `${mode}-${state.settings.lang}`;
+
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.page }} />;
-  if (!state.profile) return <Onboarding onDone={(p) => { setTab('home'); setProfile(p); setWeight(dayKey(), p.weightKg); }} />;
+  if (!state.profile) return <Onboarding key={skin} onDone={(p) => { setTab('home'); setProfile(p); setWeight(dayKey(), p.weightKg); }} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.page }}>
+    <View key={skin} style={{ flex: 1, backgroundColor: c.page }}>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       {tab === 'home' && (
         <Home selected={selected} onSelect={setSelected} onOpenCalendar={() => setCalendar(true)} onAdd={(meal, day) => setAdding({ meal, day })} onEdit={(e) => setAdding({ meal: e.meal, day: e.day, editId: e.id })} onGoSettings={() => setTab('profile')} />
       )}
@@ -68,7 +77,6 @@ export default function App() {
   if (!loaded) return null;
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
       <StoreProvider>
         <Root />
       </StoreProvider>

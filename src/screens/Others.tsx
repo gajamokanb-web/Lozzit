@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { c, f } from '../theme';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Text, TextInput, tr } from '../i18n';
+import { c, f, onTheme } from '../theme';
 import { ACTIVITY, autoBudget, autoMacros, budgetFor, dayKey, fmt, fmtDay, MEALS, METHODS, resolveMacros, targets, type MacroRule } from '../domain';
 import { useStore } from '../store';
 import { card, Icon, P, Screen, Title } from '../ui';
@@ -44,9 +45,9 @@ export function Profile() {
   const confirmReset = () => {
     const go = () => reset();
     if (Platform.OS === 'web') return go();
-    Alert.alert('Start over?', 'This deletes your profile and everything you logged on this phone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete and restart', style: 'destructive', onPress: go },
+    Alert.alert(tr('Start over?'), tr('This deletes your profile and everything you logged on this phone.'), [
+      { text: tr('Cancel'), style: 'cancel' },
+      { text: tr('Delete and restart'), style: 'destructive', onPress: go },
     ]);
   };
   const [picker, setPicker] = useState(false);
@@ -59,10 +60,10 @@ export function Profile() {
     const r = await enableSteps();
     if (r === 'ok') return setSettings({ fit: true });
     Alert.alert(
-      r === 'denied' ? 'Permission needed' : 'Health Connect not available',
-      r === 'denied'
+      tr(r === 'denied' ? 'Permission needed' : 'Health Connect not available'),
+      tr(r === 'denied'
         ? 'Allow Lozzit to read your steps in the Health Connect permission screen, then try again.'
-        : 'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.',
+        : 'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.'),
     );
   };
   type EditKey = 'age' | 'height' | 'weight' | 'goal' | 'activity' | 'budget' | 'macros' | 'stepGoal';
@@ -148,6 +149,29 @@ export function Profile() {
           </Pressable>
         ))}
       </View>
+      <Text style={s.sect}>Appearance</Text>
+      <View style={[s.list, card]}>
+        <View style={[s.li, { flexDirection: 'column', gap: 10 }]}>
+          <Text style={s.liT}>Theme</Text>
+          <View style={s.segRow}>
+            {([['light', 'Light'], ['dark', 'Dark'], ['system', 'System']] as const).map(([k, l]) => (
+              <Pressable key={k} onPress={() => setSettings({ theme: k })} style={[s.segB, st.theme === k && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityState={{ selected: st.theme === k }}>
+                <Text style={[s.segT, st.theme === k && { color: '#fff' }]}>{l}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <View style={[s.li, { flexDirection: 'column', gap: 10, borderTopWidth: 1, borderTopColor: c.line }]}>
+          <Text style={s.liT}>Language</Text>
+          <View style={s.segRow}>
+            {([['en', 'English'], ['fr', 'Français']] as const).map(([k, l]) => (
+              <Pressable key={k} onPress={() => setSettings({ lang: k })} style={[s.segB, st.lang === k && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityState={{ selected: st.lang === k }}>
+                <Text style={[s.segT, st.lang === k && { color: '#fff' }]}>{l}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
       <Text style={s.sect}>Settings</Text>
       <View style={[s.list, card]}>
         <View style={[s.li, { alignItems: 'center' }]}>
@@ -172,13 +196,13 @@ export function Profile() {
       </View>
       <Text style={s.sect}>AI label scan</Text>
       <View style={[s.list, card]}>
-        <Text style={[s.liS, { paddingTop: 14 }]}>Photograph a nutrition table when you create a food: Google Gemini reads carbs, sugar, protein, fat, saturated fat, salt and fiber. Get a free key on aistudio.google.com/apikey. The key stays on this phone; each photo is sent to Google.</Text>
+        <Text style={[s.liS, { paddingTop: 14 }]}>Photograph a nutrition table when you create a food: a Groq vision model reads carbs, sugar, protein, fat, saturated fat, salt and fiber. Get a key on console.groq.com/keys. The key stays on this phone; each photo is sent to Groq.</Text>
         <View style={{ paddingVertical: 12, gap: 8 }}>
           <Text style={s.fieldL}>API key</Text>
-          <TextInput style={s.keyIn} value={st.geminiKey} onChangeText={(x) => setSettings({ geminiKey: x.trim() })} placeholder="AIza…" placeholderTextColor={c.soft} secureTextEntry autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Gemini API key" />
+          <TextInput style={s.keyIn} value={st.groqKey} onChangeText={(x) => setSettings({ groqKey: x.trim() })} placeholder="gsk_…" placeholderTextColor={c.soft} secureTextEntry autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Groq API key" />
           <Text style={s.fieldL}>Model</Text>
-          <TextInput style={s.keyIn} value={st.geminiModel} onChangeText={(x) => setSettings({ geminiModel: x.trim() })} placeholder="gemini-flash-latest" placeholderTextColor={c.soft} autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Gemini model" />
-          <Pressable onPress={() => Linking.openURL('https://aistudio.google.com/apikey')} accessibilityRole="link"><Text style={s.link}>Get a free API key</Text></Pressable>
+          <TextInput style={s.keyIn} value={st.groqModel} onChangeText={(x) => setSettings({ groqModel: x.trim() })} placeholder="qwen/qwen3.8-27b" placeholderTextColor={c.soft} autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Groq model" />
+          <Pressable onPress={() => Linking.openURL('https://console.groq.com/keys')} accessibilityRole="link"><Text style={s.link}>Get a Groq API key</Text></Pressable>
         </View>
       </View>
       <Text style={s.sect}>Meals</Text>
@@ -204,7 +228,7 @@ export function Profile() {
                 ACTIVITY.map((a) => (
                   <Pressable key={a.v} onPress={() => { setProfile({ ...p, activity: a.v }); setEdit(null); }} style={s.mRow} accessibilityRole="button">
                     <View style={{ flex: 1 }}><Text style={s.liT}>{a.label}</Text></View>
-                    <View style={[s.radio, p.activity === a.v && { borderColor: c.ink, backgroundColor: c.ink }]} />
+                    <View style={[s.radio, p.activity === a.v && { borderColor: c.btn, backgroundColor: c.btn }]} />
                   </Pressable>
                 ))
               ) : edit === 'macros' ? (
@@ -221,7 +245,7 @@ export function Profile() {
                         </View>
                         <View style={s.chipsRow}>
                           {([['auto', 'Auto'], ['gkg', 'g / kg'], ['pct', '% kcal'], ['g', 'grams']] as const).map(([tt, lab]) => (
-                            <Pressable key={tt} onPress={() => setRl((r) => r.map((x, j) => (j === i ? { t: tt, v: x.t === tt ? x.v : tt === 'gkg' ? String(Math.round((g / p.weightKg) * 10) / 10) : tt === 'pct' ? String(Math.round((g * [4, 4, 9][i] * 100) / t.kcal)) : tt === 'g' ? String(g) : '' } : x)))} style={[s.opt, rl[i]?.t === tt && { backgroundColor: c.ink }]} accessibilityRole="button" accessibilityLabel={`${l} ${lab}`}>
+                            <Pressable key={tt} onPress={() => setRl((r) => r.map((x, j) => (j === i ? { t: tt, v: x.t === tt ? x.v : tt === 'gkg' ? String(Math.round((g / p.weightKg) * 10) / 10) : tt === 'pct' ? String(Math.round((g * [4, 4, 9][i] * 100) / t.kcal)) : tt === 'g' ? String(g) : '' } : x)))} style={[s.opt, rl[i]?.t === tt && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityLabel={`${l} ${lab}`}>
                               <Text style={[s.optT, rl[i]?.t === tt && { color: c.lime }]}>{lab}</Text>
                             </Pressable>
                           ))}
@@ -235,7 +259,7 @@ export function Profile() {
                   {(() => {
                     const res = resolveMacros(p, t.kcal, rulesOk ? rulesOf() : AUTO_RULES);
                     const total = res.p * 4 + res.c * 4 + res.f * 9;
-                    return <Text style={[s.liS, Math.abs(total - t.kcal) > t.kcal * 0.03 && { color: c.orange }]}>Total {fmt(total)} kcal for a {fmt(t.kcal)} kcal budget{total > t.kcal * 1.03 ? ': your fixed macros are above the budget.' : total < t.kcal * 0.97 ? ': every macro is fixed, the rest is unassigned.' : '.'}</Text>;
+                    return <Text style={[s.liS, Math.abs(total - t.kcal) > t.kcal * 0.03 && { color: c.orange }]}>{`Total ${fmt(total)} kcal for a ${fmt(t.kcal)} kcal budget${total > t.kcal * 1.03 ? ': your fixed macros are above the budget.' : total < t.kcal * 0.97 ? ': every macro is fixed, the rest is unassigned.' : '.'}`}</Text>;
                   })()}
                 </View>
               ) : edit === 'budget' ? (
@@ -245,7 +269,7 @@ export function Profile() {
                     const b = budgetFor(p, m.key);
                     const on = !p.budget && budgetFor(p).method.key === m.key;
                     return (
-                      <Pressable key={m.key} onPress={() => { setProfile({ ...p, method: m.key, budget: undefined }); }} style={[s.method, on && { borderColor: c.ink }]} accessibilityRole="button" accessibilityLabel={m.name}>
+                      <Pressable key={m.key} onPress={() => { setProfile({ ...p, method: m.key, budget: undefined }); }} style={[s.method, on && { borderColor: c.btn }]} accessibilityRole="button" accessibilityLabel={m.name}>
                         <View style={{ flex: 1 }}>
                           <Text style={s.liT}>{m.name}</Text>
                           <Text style={s.liS}>{m.source}</Text>
@@ -296,7 +320,7 @@ export function Profile() {
                   <Text style={s.liT}>{sourceName(pkg)}</Text>
                   <Text style={s.liS}>{pkg === 'all' ? 'Android merges every app and avoids double counting' : pkg}</Text>
                 </View>
-                <View style={[s.radio, state.settings.stepSource === pkg && { borderColor: c.ink, backgroundColor: c.ink }]} />
+                <View style={[s.radio, state.settings.stepSource === pkg && { borderColor: c.btn, backgroundColor: c.btn }]} />
               </Pressable>
             ))}
             {sources && sources.length === 0 && <Text style={s.liS}>No step data found yet. Open Mi Fitness or Google Fit, sync, and enable Health Connect sharing there.</Text>}
@@ -311,7 +335,10 @@ export function Profile() {
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
+  segRow: { flexDirection: 'row', gap: 8 },
+  segB: { flex: 1, height: 40, borderRadius: 20, backgroundColor: c.page, alignItems: 'center', justifyContent: 'center' },
+  segT: { fontFamily: f.bold, fontSize: 13.5, color: c.ink },
   empty: { fontFamily: f.regular, fontSize: 15, color: c.muted, marginHorizontal: 20, lineHeight: 22 },
   group: { marginHorizontal: 20, marginBottom: 20 },
   groupHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
@@ -329,7 +356,7 @@ const s = StyleSheet.create({
   statV: { fontFamily: f.extra, fontSize: 24, color: c.ink, letterSpacing: -0.6, marginTop: 4 },
   pHead: { alignItems: 'center', gap: 12, marginBottom: 22 },
   avatarRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: c.lime, padding: 4 },
-  avatar: { flex: 1, borderRadius: 40, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  avatar: { flex: 1, borderRadius: 40, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   avatarLetter: { fontFamily: f.extra, fontSize: 32, color: c.lime },
   pName: { fontFamily: f.extra, fontSize: 24, color: c.ink, letterSpacing: -0.5 },
   list: { marginHorizontal: 20, borderRadius: 26, paddingHorizontal: 18 },
@@ -346,7 +373,7 @@ const s = StyleSheet.create({
   logUnit: { fontFamily: f.semi, fontSize: 12.5, color: c.muted },
   credit: { fontFamily: f.regular, fontSize: 11.5, color: c.soft, marginHorizontal: 20, marginTop: 10, textAlign: 'center' },
   mWrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.4)', justifyContent: 'center', paddingHorizontal: 20 },
-  mCard: { backgroundColor: '#fff', borderRadius: 28, padding: 20, gap: 4 },
+  mCard: { backgroundColor: c.card, borderRadius: 28, padding: 20, gap: 4 },
   mTitle: { fontFamily: f.extra, fontSize: 18, color: c.ink, marginBottom: 8 },
   mRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: c.line },
@@ -354,7 +381,7 @@ const s = StyleSheet.create({
   fieldL: { fontFamily: f.semi, fontSize: 11.5, color: c.muted },
   field: { fontFamily: f.extra, fontSize: 20, color: c.ink, paddingVertical: 2 },
   fieldBig: { backgroundColor: c.page, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 12, fontSize: 30 },
-  save: { height: 54, borderRadius: 27, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  save: { height: 54, borderRadius: 27, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   saveT: { fontFamily: f.bold, fontSize: 16, color: c.lime },
   link: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
   mRowH: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
@@ -371,3 +398,5 @@ const s = StyleSheet.create({
   reset: { alignSelf: 'center', marginTop: 24, paddingVertical: 12, paddingHorizontal: 18 },
   resetText: { fontFamily: f.bold, fontSize: 14, color: c.red },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

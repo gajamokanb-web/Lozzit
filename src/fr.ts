@@ -1,0 +1,160 @@
+/** French translations, keyed by the exact English UI string. */
+export const FR: Record<string, string> = {
+  // navigation
+  Dashboard: 'Accueil', Stats: 'Stats', Logs: 'Journal', Profile: 'Profil', Add: 'Ajouter',
+  // meals
+  Breakfast: 'Petit-déjeuner', 'Morning Snacks': 'Collation du matin', Lunch: 'Déjeuner', 'Afternoon Snacks': 'Collation de l’après-midi', Dinner: 'Dîner', 'Evening Snacks': 'Collation du soir',
+  // nutrients
+  Protein: 'Protéines', Carbs: 'Glucides', Fat: 'Lipides', Sugar: 'Sucres', Salt: 'Sel', Fiber: 'Fibres', 'Saturated fat': 'Acides gras saturés', 'Sat. fat': 'AG saturés',
+  Calories: 'Calories', calories: 'calories', Weight: 'Poids', Water: 'Eau', Steps: 'Pas',
+  // activity
+  'Mostly sitting': 'Plutôt sédentaire', 'Desk job, little exercise': 'Travail de bureau, peu de sport',
+  'Lightly active': 'Légèrement actif', 'Walks, 1–3 workouts a week': 'Marche, 1 à 3 séances par semaine',
+  Active: 'Actif', '3–5 workouts a week': '3 à 5 séances par semaine',
+  'Very active': 'Très actif', 'Hard training most days': 'Entraînement intense presque tous les jours',
+  // dates
+  January: 'Janvier', February: 'Février', March: 'Mars', April: 'Avril', May: 'Mai', June: 'Juin', July: 'Juillet', August: 'Août', September: 'Septembre', October: 'Octobre', November: 'Novembre', December: 'Décembre',
+  Jan: 'janv.', Feb: 'févr.', Mar: 'mars', Apr: 'avr.', Jun: 'juin', Jul: 'juil.', Aug: 'août', Sep: 'sept.', Oct: 'oct.', Nov: 'nov.', Dec: 'déc.',
+  'Go to today': 'Aller à aujourd’hui',
+  // home
+  'kcal left': 'kcal restantes', 'kcal over': 'kcal en trop', 'Add Food': 'Ajouter', Factory: 'Dupliquer', 'Connect steps': 'Connecter les pas',
+  'calories logged': 'calories enregistrées', 'cals': 'kcal', items: 'aliments', item: 'aliment', '1 serving': '1 portion',
+  // add sheet
+  Done: 'Terminé', Back: 'Retour', Save: 'Enregistrer', Cancel: 'Annuler', Change: 'Modifier', Copy: 'Copier',
+  // add food
+  'Add food': 'Ajouter un aliment', 'Scan barcode': 'Scanner un code-barres', 'Quick add': 'Ajout rapide', 'Edit quantity': 'Modifier la quantité', 'Add to log': 'Ajouter au journal',
+  'Edit nutrition': 'Modifier les valeurs', 'Create food': 'Créer un aliment', 'Choose a logo': 'Choisir un logo', 'Scan label': 'Scanner l’étiquette', 'Check the photo': 'Vérifier la photo',
+  Search: 'Recherche', 'My Foods': 'Mes aliments', Meals: 'Repas', Recent: 'Récents',
+  'Search foods': 'Rechercher un aliment', 'Type a food name, or scan a barcode.': 'Saisis le nom d’un aliment ou scanne un code-barres.',
+  'Keep typing…': 'Continue de saisir…', 'No results': 'Aucun résultat',
+  'Source: Anses, Table de composition nutritionnelle Ciqual 2025 (Licence Ouverte Etalab 2.0).': 'Source : Anses, Table de composition nutritionnelle Ciqual 2025 (Licence Ouverte Etalab 2.0).',
+  '+ Create food': '+ Créer un aliment',
+  'Foods you add, scan or create will be listed here, A to Z.': 'Les aliments que tu ajoutes, scannes ou crées apparaîtront ici, de A à Z.',
+  'Everything is already logged today.': 'Tout est déjà enregistré aujourd’hui.',
+  'Meals you have logged will appear here, most recent first.': 'Les repas que tu as enregistrés apparaîtront ici, du plus récent au plus ancien.',
+  'Allow the camera to scan barcodes.': 'Autorise la caméra pour scanner les codes-barres.', 'Allow camera': 'Autoriser la caméra',
+  'Create this food': 'Créer cet aliment', 'Scan again': 'Scanner à nouveau', 'Point the camera at a barcode.': 'Pointe la caméra vers un code-barres.', 'Search by name instead': 'Chercher par nom',
+  'Scan the nutrition label': 'Scanner l’étiquette nutritionnelle', 'Photo read by Groq AI (your API key)': 'Photo lue par l’IA Groq (ta clé API)',
+  'Values per 100': 'Valeurs pour 100', 'Barcode (optional)': 'Code-barres (facultatif)', 'Save changes': 'Enregistrer les modifications', 'Save food': 'Enregistrer l’aliment',
+  'Reading the label…': 'Lecture de l’étiquette…',
+  'Fit the whole nutrition table in the frame, then take the photo. The photo is sent to Groq and not kept.': 'Cadre tout le tableau nutritionnel, puis prends la photo. La photo est envoyée à Groq et n’est pas conservée.',
+  'Is the table sharp and fully visible? If not, retake the photo before sending.': 'Le tableau est-il net et entièrement visible ? Sinon, reprends la photo avant l’envoi.',
+  Retake: 'Reprendre', Gallery: 'Galerie', Send: 'Envoyer', 'Remove from log': 'Retirer du journal',
+  'Add your Groq API key first: Profile → AI label scan.': 'Ajoute d’abord ta clé API Groq : Profil → Scan d’étiquette IA.',
+  'Camera permission is needed to photograph the label.': 'L’accès à la caméra est nécessaire pour photographier l’étiquette.',
+  'This image could not be read. Pick another one.': 'Cette image n’a pas pu être lue. Choisis-en une autre.',
+  'The gallery could not be opened.': 'La galerie n’a pas pu être ouverte.',
+  'The photo could not be taken. Try again.': 'La photo n’a pas pu être prise. Réessaie.', 'The photo could not be taken.': 'La photo n’a pas pu être prise.',
+  'Values read from the label: check them before saving.': 'Valeurs lues sur l’étiquette : vérifie-les avant d’enregistrer.',
+  'The label could not be read.': 'L’étiquette n’a pas pu être lue.',
+  'Groq took too long to answer (over 2 min). Try again.': 'Groq met trop de temps à répondre (plus de 2 min). Réessaie.',
+  'Groq refused the API key. Check it in Profile.': 'Groq a refusé la clé API. Vérifie-la dans Profil.',
+  'This model name does not exist on Groq. Check the model name in Profile.': 'Ce nom de modèle n’existe pas chez Groq. Vérifie-le dans Profil.',
+  'The photo is too large for Groq. Retake it or pick a smaller image.': 'La photo est trop lourde pour Groq. Reprends-la ou choisis une image plus petite.',
+  'Groq rate limit reached. Try again in a minute.': 'Limite Groq atteinte. Réessaie dans une minute.',
+  'The label could not be read. Try a sharper, well lit photo of the table.': 'L’étiquette n’a pas pu être lue. Essaie une photo plus nette et bien éclairée du tableau.',
+  'No nutrition values found in the photo. Frame the whole table and try again.': 'Aucune valeur nutritionnelle trouvée sur la photo. Cadre tout le tableau et réessaie.',
+  'Only per-serving values were found without a serving size: check them.': 'Seules des valeurs par portion ont été trouvées, sans taille de portion : vérifie-les.',
+  'Turn flashlight on': 'Allumer la lampe', 'Turn flashlight off': 'Éteindre la lampe',
+  // create food / quick add
+  Name: 'Nom', 'Food name': 'Nom de l’aliment', Brand: 'Marque', 'Brand (optional)': 'Marque (facultatif)', Unit: 'Unité', Portion: 'Portion', 'Portion size (optional)': 'Taille de portion (facultatif)',
+  Calories_: 'Calories', 'Calories (kcal)': 'Calories (kcal)', 'Protein (g)': 'Protéines (g)', 'Carbs (g)': 'Glucides (g)', 'Fat (g)': 'Lipides (g)', 'Sugar (g, optional)': 'Sucres (g, facultatif)', 'Salt (g, optional)': 'Sel (g, facultatif)', 'Fiber (g, optional)': 'Fibres (g, facultatif)', 'Saturated fat (g, optional)': 'AG saturés (g, facultatif)',
+  'Sugar (g)': 'Sucres (g)', 'Salt (g)': 'Sel (g)', 'Fiber (g)': 'Fibres (g)', 'Saturated fat (g)': 'AG saturés (g)',
+  // factor
+  'Divide or multiply every quantity.': 'Divise ou multiplie chaque quantité.',
+  // onboarding
+  'What should we call you?': 'Comment doit-on t’appeler ?', 'About you': 'À propos de toi', 'Your numbers': 'Tes chiffres', 'How active are you?': 'Quel est ton niveau d’activité ?',
+  'Welcome to Lozzit': 'Bienvenue sur Lozzit', 'First name': 'Prénom', 'Your daily budget': 'Ton budget quotidien', Continue: 'Continuer', Next: 'Suivant', 'Get started': 'Commencer', Finish: 'Terminer',
+  Male: 'Homme', Female: 'Femme', Sex: 'Sexe', Age: 'Âge', Height: 'Taille', 'Height (cm)': 'Taille (cm)', 'Weight (kg)': 'Poids (kg)', 'Goal weight': 'Poids cible', 'Goal weight (kg)': 'Poids cible (kg)', Activity: 'Activité',
+  // logs / profile
+  'Nothing logged yet. Tap the green button to add your first meal.': 'Rien d’enregistré pour l’instant. Appuie sur le bouton vert pour ajouter ton premier repas.',
+  'Start over?': 'Tout recommencer ?', 'This deletes your profile and everything you logged on this phone.': 'Cela supprime ton profil et tout ce que tu as enregistré sur ce téléphone.',
+  'Delete and restart': 'Supprimer et recommencer', 'Permission needed': 'Autorisation requise', 'Health Connect not available': 'Health Connect indisponible',
+  'Allow Lozzit to read your steps in the Health Connect permission screen, then try again.': 'Autorise Lozzit à lire tes pas dans l’écran de permissions Health Connect, puis réessaie.',
+  'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.': 'Les pas sont lus via Health Connect, où Google Fit les stocke. Installe ou mets à jour Health Connect depuis Google Play (sur Android 14+, il se trouve dans Paramètres → Health Connect), puis réessaie.',
+  'Daily budget': 'Budget quotidien', 'Macro targets': 'Objectifs de macros', 'Daily budget (kcal)': 'Budget quotidien (kcal)', 'Macro targets (g)': 'Objectifs de macros (g)', 'Daily step goal': 'Objectif de pas quotidien', 'Edit': 'Modifier',
+  Appearance: 'Apparence', Theme: 'Thème', Light: 'Clair', Dark: 'Sombre', System: 'Système', Language: 'Langue',
+  Settings: 'Réglages', 'Sync steps': 'Synchroniser les pas',
+  'Reads your daily steps through Health Connect: Google Fit, Mi Fitness (Mi Band), Samsung Health…': 'Lit tes pas quotidiens via Health Connect : Google Fit, Mi Fitness (Mi Band), Samsung Health…',
+  'Steps source': 'Source des pas', 'AI label scan': 'Scan d’étiquette IA',
+  'Photograph a nutrition table when you create a food: a Groq vision model reads carbs, sugar, protein, fat, saturated fat, salt and fiber. Get a key on console.groq.com/keys. The key stays on this phone; each photo is sent to Groq.': 'Photographie un tableau nutritionnel quand tu crées un aliment : un modèle de vision Groq lit les glucides, sucres, protéines, lipides, acides gras saturés, sel et fibres. Crée une clé sur console.groq.com/keys. La clé reste sur ce téléphone ; chaque photo est envoyée à Groq.',
+  'API key': 'Clé API', Model: 'Modèle', 'Get a Groq API key': 'Obtenir une clé API Groq',
+  'Choose the meals you use. A meal you turn off disappears from the dashboard, but stays visible on days where it already has food.': 'Choisis les repas que tu utilises. Un repas désactivé disparaît de l’accueil, mais reste visible les jours où il contient déjà des aliments.',
+  'Nutrition on the dashboard': 'Nutrition sur l’accueil', 'Show a smaller bar under Carbs and under Fat. Values come from the foods you log.': 'Affiche une barre plus petite sous les glucides et sous les lipides. Les valeurs viennent des aliments que tu enregistres.',
+  'under Carbs': 'sous les glucides', 'under Fat': 'sous les lipides',
+  'Fix the macros you care about. “Auto” ones share the calories that are left, in proportion to the default split.': 'Fixe les macros qui comptent pour toi. Celles en « Auto » se partagent les calories restantes, selon la répartition par défaut.',
+  Auto: 'Auto', 'g / kg': 'g / kg', '% kcal': '% kcal', grams: 'grammes',
+  'Pick how your resting energy is estimated. Then activity and your goal are applied the same way.': 'Choisis comment ton métabolisme de repos est estimé. Ensuite, l’activité et ton objectif sont appliqués de la même façon.',
+  'Or set your own': 'Ou fixe le tien', 'Save custom budget': 'Enregistrer un budget personnalisé', 'Use auto': 'Utiliser l’auto',
+  '1990, the most accurate of the common formulas for most adults': '1990, la plus précise des formules courantes pour la plupart des adultes',
+  'Roza & Shizgal, 1984; classic formula, tends to read a bit higher': 'Roza & Shizgal, 1984 ; formule classique, donne un peu plus haut',
+  '1985, used by WHO; uses weight and age band only': '1985, utilisée par l’OMS ; seulement le poids et la tranche d’âge',
+  '1986–87; weight only, simple': '1986–87 ; poids uniquement, simple',
+  '(custom budget set below)': '(budget personnalisé défini ci-dessous)', 'Resting energy:': 'Métabolisme de repos :', '× activity': '× activité',
+  'kcal to maintain your weight': 'kcal pour maintenir ton poids', 'Goal:': 'Objectif :', 'to': 'à', 'rounded to': 'arrondi à', '(never below 1,200)': '(jamais sous 1 200)', custom: 'personnalisé',
+  'Food data: Anses Ciqual 2025 (Licence Ouverte Etalab 2.0) · Open Food Facts (ODbL)': 'Données alimentaires : Anses Ciqual 2025 (Licence Ouverte Etalab 2.0) · Open Food Facts (ODbL)',
+  'Android merges every app and avoids double counting': 'Android fusionne toutes les applis et évite les doublons', 'All sources': 'Toutes les sources',
+  'No step data found yet. Open Mi Fitness or Google Fit, sync, and enable Health Connect sharing there.': 'Aucune donnée de pas pour l’instant. Ouvre Mi Fitness ou Google Fit, synchronise et active le partage Health Connect.',
+  'Looking for apps…': 'Recherche d’applis…', 'Start over with a new profile': 'Recommencer avec un nouveau profil',
+  // stats
+  '1 week': '1 semaine', '1 month': '1 mois', '3 months': '3 mois', '6 months': '6 mois', '1 year': '1 an', 'Since inception': 'Depuis le début',
+  '1W': '1S', '1M': '1M', '3M': '3M', '6M': '6M', '1Y': '1A',
+  Average: 'Moyenne', Macronutrients: 'Macronutriments', 'budget for week': 'budget de la semaine', '· dashed line = goal': '· ligne pointillée = objectif', under: 'sous', over: 'au-dessus',
+  'No weigh-in in this period. Tap + to log your weight.': 'Aucune pesée sur cette période. Appuie sur + pour enregistrer ton poids.',
+  'Log meals to see your week against your budget': 'Enregistre des repas pour voir ta semaine face à ton budget',
+  'Turn on “Sync steps” in Profile to see your steps here.': 'Active « Synchroniser les pas » dans Profil pour voir tes pas ici.',
+  'a day': 'par jour', goal: 'objectif',
+  // steps sources
+  'All': 'Toutes',
+  'Harris–Benedict (revised)': 'Harris–Benedict (révisée)', 'Schofield (FAO/WHO)': 'Schofield (FAO/OMS)',
+  '1. Resting energy:': '1. Métabolisme de repos :', '2. × activity': '2. × activité', '3. Goal:': '3. Objectif :', '→ rounded to': '→ arrondi à',
+  'this week': 'cette semaine', steps: 'pas', 'Search a food': 'Rechercher un aliment',
+  'Name (optional)': 'Nom (facultatif)', 'Filter (English names)': 'Filtrer (noms anglais)', 'Copy this meal': 'Copier ce repas', years: 'ans', 'Current weight': 'Poids actuel',
+  '(g, optional)': '(g, facultatif)', ', optional)': ', facultatif)', 'g protein ·': 'g de protéines ·', 'g carbs ·': 'g de glucides ·', 'g fat': 'g de lipides',
+  'Copy a meal from a previous day into': 'Copie un repas d’un jour précédent dans', 'Delete': 'Supprimer', 'Edit Age': 'Modifier l’âge',
+  // misc
+  'Tap + to log': 'Appuie sur + pour enregistrer',
+};
+
+const WDS: Record<string, string> = { Sun: 'dim.', Mon: 'lun.', Tue: 'mar.', Wed: 'mer.', Thu: 'jeu.', Fri: 'ven.', Sat: 'sam.' };
+const MON3: Record<string, string> = { Jan: 'janv.', Feb: 'févr.', Mar: 'mars', Apr: 'avr.', May: 'mai', Jun: 'juin', Jul: 'juil.', Aug: 'août', Sep: 'sept.', Oct: 'oct.', Nov: 'nov.', Dec: 'déc.' };
+const AT: Record<string, string> = { breakfast: 'au petit-déjeuner', 'morning snacks': 'à la collation du matin', lunch: 'au déjeuner', 'afternoon snacks': 'à la collation de l’après-midi', dinner: 'au dîner', 'evening snacks': 'à la collation du soir' };
+const IN: Record<string, string> = { breakfast: 'dans le petit-déjeuner', 'morning snacks': 'dans la collation du matin', lunch: 'dans le déjeuner', 'afternoon snacks': 'dans la collation de l’après-midi', dinner: 'dans le dîner', 'evening snacks': 'dans la collation du soir' };
+const MEAL_FR: Record<string, string> = { Breakfast: 'Petit-déjeuner', 'Morning Snacks': 'Collation du matin', Lunch: 'Déjeuner', 'Afternoon Snacks': 'Collation de l’après-midi', Dinner: 'Dîner', 'Evening Snacks': 'Collation du soir' };
+const mealFr = (m: string) => MEAL_FR[m] ?? m;
+const T = (s: string) => FR[s] ?? s;
+
+export const FR_PATTERNS: [RegExp, (...m: string[]) => string][] = [
+  [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\w{3}) (\d+)$/, (w, m, d) => `${WDS[w]} ${d} ${MON3[m]}`],
+  [/^Copy a meal from a previous day into (.+)\.$/, (m) => `Copie un repas d’un jour précédent ${IN[m] ?? m}.`],
+  [/^under budget for week$/, () => 'sous le budget de la semaine'],
+  [/^over budget for week$/, () => 'au-dessus du budget de la semaine'],
+  [/^Step (\d+) of 4$/, (n) => `Étape ${n} sur 4`],
+  [/^· (\d+) already logged today$/, (n) => `· ${n} déjà enregistré${+n > 1 ? 's' : ''} aujourd’hui`],
+  [/^Add to (.+)$/, (m) => `Ajouter ${AT[m] ?? m}`],
+  [/^Copy into (.+)$/, (m) => `Copier ${IN[m] ?? m}`],
+  [/^Open Food Facts is not reachable, and (\S+) is not in your foods yet\.$/, (c) => `Open Food Facts est inaccessible et ${c} n’est pas encore dans tes aliments.`],
+  [/^(\S+) is not in your foods or in Open Food Facts\.$/, (c) => `${c} n’est ni dans tes aliments ni dans Open Food Facts.`],
+  [/^Factory · (.*)$/, (l) => `Dupliquer · ${mealFr(l)}`],
+  [/^(\d+(?:\.\d+)?) servings$/, (n) => `${n} portions`],
+  [/^1 portion \((.+)\)$/, (s) => `1 portion (${s})`],
+  [/^1 serving \((.+)\)$/, (s) => `1 portion (${s})`],
+  [/^(\S+) cals$/, (n) => `${n} kcal`],
+  [/^goal (\S+)$/, (n) => `objectif ${n}`],
+  [/^· (\S+) a day$/, (n) => `· ${n} par jour`],
+  [/^(\d+)P · (\d+)C · (\d+)F( · auto)?$/, (a, b, c, auto) => `${a}P · ${b}G · ${c}L${auto ? ' · auto' : ''}`],
+  [/^(\S+) kcal · (.+)$/, (k, m) => `${k} kcal · ${m === 'custom' ? 'personnalisé' : m}`],
+  [/^Total (\S+) kcal for a (\S+) kcal budget(.*)$/, (a, b, tail) => `Total ${a} kcal pour un budget de ${b} kcal${tail === '.' ? '.' : tail.startsWith(': your') ? ' : tes macros fixées dépassent le budget.' : ' : toutes les macros sont fixées, le reste n’est pas attribué.'}`],
+  [/^goal ([\d.]+) kg is below your weight → −500 kcal to lose about 0\.5 kg a week$/, (g) => `objectif ${g} kg sous ton poids → −500 kcal pour perdre environ 0,5 kg par semaine`],
+  [/^goal ([\d.]+) kg is above your weight → \+300 kcal to gain slowly$/, (g) => `objectif ${g} kg au-dessus de ton poids → +300 kcal pour prendre doucement`],
+  [/^you are at your goal weight → no adjustment$/, () => 'tu es à ton poids cible → aucun ajustement'],
+  [/^Network error while contacting Groq \((.*)\)\.$/, (m) => `Erreur réseau en contactant Groq (${m}).`],
+  [/^Groq refused the request(.*)$/, (t) => `Groq a refusé la requête${t.startsWith(':') ? ' :' + t.slice(1) : '. Vérifie ta clé API et le nom du modèle dans Profil.'}`],
+  [/^Groq returned an error \((\d+)\)\.$/, (n) => `Groq a renvoyé une erreur (${n}).`],
+  [/^(.*) \(custom budget set below\)$/, (m) => `${m} (budget personnalisé défini ci-dessous)`],
+  [/^(\d+) y (.*)$/, (a, b) => `${a} ans ${b}`],
+];
+
+/** Formula lines contain units; swap the few English tokens. */
+export const frFormula = (s: string) => s.replace(/ y /g, ' ans ').replace(/\((under 30|30–59|60\+) years\)/, (_m, b) => `(${b === 'under 30' ? 'moins de 30' : b} ans)`);
+void T;

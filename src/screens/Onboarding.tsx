@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { c, f } from '../theme';
+import { c, f, onTheme } from '../theme';
 import { ACTIVITY, fmt, targets, type Profile, type Sex } from '../domain';
 import { card, Icon, P } from '../ui';
 
@@ -39,7 +40,7 @@ function Choice({ on, label, hint, onPress }: { on: boolean; label: string; hint
         <Text style={s.choiceLabel}>{label}</Text>
         {hint ? <Text style={s.choiceHint}>{hint}</Text> : null}
       </View>
-      <View style={[s.radio, on && { backgroundColor: c.ink, borderColor: c.ink }]}>{on && <View style={s.radioDot} />}</View>
+      <View style={[s.radio, on && { backgroundColor: c.btn, borderColor: c.btn }]}>{on && <View style={s.radioDot} />}</View>
     </Pressable>
   );
 }
@@ -127,7 +128,7 @@ export function Onboarding({ onDone }: { onDone: (p: Profile) => void }) {
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 26 },
   back: { width: 40, height: 40, borderRadius: 20, ...card, alignItems: 'center', justifyContent: 'center' },
   progress: { flex: 1, flexDirection: 'row', gap: 6 },
@@ -145,10 +146,12 @@ const s = StyleSheet.create({
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.line, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.lime },
   summary: { backgroundColor: c.lime, borderRadius: 26, padding: 20, marginTop: 6 },
-  sumLabel: { fontFamily: f.semi, fontSize: 13, color: c.ink, opacity: 0.75 },
-  sumBig: { fontFamily: f.extra, fontSize: 38, color: c.ink, letterSpacing: -1.2, marginTop: 2 },
+  sumLabel: { fontFamily: f.semi, fontSize: 13, color: c.onLime, opacity: 0.75 },
+  sumBig: { fontFamily: f.extra, fontSize: 38, color: c.onLime, letterSpacing: -1.2, marginTop: 2 },
   sumUnit: { fontFamily: f.bold, fontSize: 16, letterSpacing: 0 },
-  sumMacros: { fontFamily: f.semi, fontSize: 13, color: c.ink, opacity: 0.8, marginTop: 6 },
-  cta: { height: 58, borderRadius: 29, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  sumMacros: { fontFamily: f.semi, fontSize: 13, color: c.onLime, opacity: 0.8, marginTop: 6 },
+  cta: { height: 58, borderRadius: 29, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   ctaText: { fontFamily: f.bold, fontSize: 16, color: c.lime },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

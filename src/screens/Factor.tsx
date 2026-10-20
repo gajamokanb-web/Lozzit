@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { c, f } from '../theme';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../i18n';
+import { c, f, onTheme } from '../theme';
 import { fmt } from '../domain';
 
 type Op = '×' | '÷';
@@ -25,7 +26,7 @@ export function FactorModal({ visible, title, confirm, kcal, onApply, onClose }:
             {CHIPS.map(([o, k]) => {
               const on = op === o && Number(n) === k;
               return (
-                <Pressable key={o + k} onPress={() => { setOp(o); setN(String(k)); }} style={[s.chip, on && { backgroundColor: c.ink }]} accessibilityRole="button" accessibilityLabel={`${o}${k}`}>
+                <Pressable key={o + k} onPress={() => { setOp(o); setN(String(k)); }} style={[s.chip, on && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityLabel={`${o}${k}`}>
                   <Text style={[s.chipT, on && { color: c.lime }]}>{o}{k}</Text>
                 </Pressable>
               );
@@ -34,7 +35,7 @@ export function FactorModal({ visible, title, confirm, kcal, onApply, onClose }:
           <View style={s.row}>
             <View style={s.seg}>
               {(['÷', '×'] as Op[]).map((o) => (
-                <Pressable key={o} onPress={() => setOp(o)} style={[s.segB, op === o && { backgroundColor: c.ink }]} accessibilityRole="button" accessibilityLabel={o === '×' ? 'Multiply' : 'Divide'}>
+                <Pressable key={o} onPress={() => setOp(o)} style={[s.segB, op === o && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityLabel={o === '×' ? 'Multiply' : 'Divide'}>
                   <Text style={[s.segT, op === o && { color: c.lime }]}>{o}</Text>
                 </Pressable>
               ))}
@@ -50,7 +51,7 @@ export function FactorModal({ visible, title, confirm, kcal, onApply, onClose }:
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   wrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.45)', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: c.card, borderRadius: 30, padding: 22, gap: 14 },
   h: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4 },
@@ -65,7 +66,9 @@ const s = StyleSheet.create({
   input: { flex: 1, minWidth: 0, backgroundColor: c.page, borderRadius: 18, paddingHorizontal: 16, height: 48, fontFamily: f.extra, fontSize: 22, color: c.ink },
   res: { fontFamily: f.extra, fontSize: 22, color: c.ink },
   resS: { fontFamily: f.medium, fontSize: 13, color: c.muted },
-  cta: { height: 54, borderRadius: 27, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  cta: { height: 54, borderRadius: 27, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   ctaT: { fontFamily: f.bold, fontSize: 16, color: c.lime },
   link: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

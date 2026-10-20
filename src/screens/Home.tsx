@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../i18n';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { c, f } from '../theme';
+import { c, f, onTheme } from '../theme';
 import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, scaleEntry, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
 import { FoodIcon } from '../foodIcons';
@@ -33,7 +34,7 @@ function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekD
       {days.map((d) => {
         const on = d.key === selected;
         return (
-          <Pressable key={d.key} onPress={() => onSelect(d.key)} style={[s.day, on && { backgroundColor: c.ink }]} accessibilityLabel={`Day ${d.date}`}>
+          <Pressable key={d.key} onPress={() => onSelect(d.key)} style={[s.day, on && { backgroundColor: c.btn }]} accessibilityLabel={`Day ${d.date}`}>
             <Text style={[s.dayL, on && { color: c.lime }]}>{d.letter}</Text>
             <Text style={[s.dayN, on && { color: '#fff' }]}>{d.date}</Text>
             <View style={[s.todayDot, { opacity: d.isToday && !on ? 1 : 0 }]} />
@@ -143,9 +144,9 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
         <View style={s.heroBlob} />
         <View style={{ width: 136, height: 136 }}>
           <Svg width={136} height={136} viewBox="0 0 136 136">
-            <Circle cx={68} cy={68} r={R} fill="none" stroke={c.ink} strokeOpacity={0.13} strokeWidth={16} />
+            <Circle cx={68} cy={68} r={R} fill="none" stroke={c.onLime} strokeOpacity={0.13} strokeWidth={16} />
             {pct > 0 && (
-              <Circle cx={68} cy={68} r={R} fill="none" stroke={c.ink} strokeWidth={16} strokeLinecap="round" strokeDasharray={`${C * pct} ${C}`} transform="rotate(-90 68 68)" />
+              <Circle cx={68} cy={68} r={R} fill="none" stroke={c.onLime} strokeWidth={16} strokeLinecap="round" strokeDasharray={`${C * pct} ${C}`} transform="rotate(-90 68 68)" />
             )}
           </Svg>
           <View style={s.ringCenter}>
@@ -239,7 +240,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   dateBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46 },
   arrow: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   dateBtn: { paddingVertical: 8, paddingHorizontal: 8 },
@@ -254,18 +255,18 @@ const s = StyleSheet.create({
   hero: { marginHorizontal: 20, marginTop: 14, minHeight: 172, paddingVertical: 18, borderRadius: 30, backgroundColor: c.lime, paddingLeft: 18, paddingRight: 20, flexDirection: 'row', alignItems: 'center', gap: 20, overflow: 'hidden' },
   heroBlob: { position: 'absolute', right: -60, top: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.16)' },
   ringCenter: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  ringBig: { fontFamily: f.extra, fontSize: 27, color: c.ink, letterSpacing: -1 },
-  ringSmall: { fontFamily: f.semi, fontSize: 12, color: c.ink, opacity: 0.72, marginTop: 3 },
+  ringBig: { fontFamily: f.extra, fontSize: 27, color: c.onLime, letterSpacing: -1 },
+  ringSmall: { fontFamily: f.semi, fontSize: 12, color: c.onLime, opacity: 0.72, marginTop: 3 },
   macroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 },
-  macroName: { fontFamily: f.semi, fontSize: 12.5, color: c.ink, opacity: 0.78 },
-  macroVal: { fontFamily: f.extra, fontSize: 12.5, color: c.ink },
+  macroName: { fontFamily: f.semi, fontSize: 12.5, color: c.onLime, opacity: 0.78 },
+  macroVal: { fontFamily: f.extra, fontSize: 12.5, color: c.onLime },
   macroGoal: { fontFamily: f.semi, opacity: 0.6 },
-  subName: { fontFamily: f.semi, fontSize: 11, color: c.ink, opacity: 0.7 },
-  subVal: { fontFamily: f.bold, fontSize: 11, color: c.ink },
+  subName: { fontFamily: f.semi, fontSize: 11, color: c.onLime, opacity: 0.7 },
+  subVal: { fontFamily: f.bold, fontSize: 11, color: c.onLime },
   trackS: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)', overflow: 'hidden' },
-  fillS: { height: 4, borderRadius: 2, backgroundColor: c.ink, opacity: 0.75 },
+  fillS: { height: 4, borderRadius: 2, backgroundColor: c.onLime, opacity: 0.75 },
   track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)', overflow: 'hidden' },
-  fill: { height: 8, borderRadius: 4, backgroundColor: c.ink },
+  fill: { height: 8, borderRadius: 4, backgroundColor: c.onLime },
 
   tiles: { flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 14 },
   tile: { ...card, flex: 1, height: 142, borderRadius: 26, padding: 14 },
@@ -291,3 +292,5 @@ const s = StyleSheet.create({
   addBtn: { backgroundColor: c.tint, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
   addText: { fontFamily: f.bold, fontSize: 15, color: c.limeText },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { c, f } from '../theme';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../i18n';
+import { c, f, onTheme } from '../theme';
 import { dayKey, MONTHS, parseKey } from '../domain';
 import { Icon, P } from '../ui';
 
@@ -43,7 +44,7 @@ export function Calendar({ visible, selected, marks, onPick, onClose }: { visibl
                 const on = k === selected;
                 return (
                   <Pressable key={i} style={s.cell} onPress={() => { onPick(k); onClose(); }} accessibilityLabel={`Select ${k}`}>
-                    <View style={[s.day, on && { backgroundColor: c.ink }, !on && k === today && { borderWidth: 2, borderColor: c.lime }]}>
+                    <View style={[s.day, on && { backgroundColor: c.btn }, !on && k === today && { borderWidth: 2, borderColor: c.lime }]}>
                       <Text style={[s.dayT, on && { color: '#fff' }]}>{d}</Text>
                     </View>
                     <View style={[s.dot, { opacity: marks.has(k) ? 1 : 0 }, on && { backgroundColor: c.lime }]} />
@@ -61,9 +62,9 @@ export function Calendar({ visible, selected, marks, onPick, onClose }: { visibl
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   wrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.4)', justifyContent: 'center', paddingHorizontal: 20 },
-  card: { backgroundColor: '#fff', borderRadius: 30, padding: 18 },
+  card: { backgroundColor: c.card, borderRadius: 30, padding: 18 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   arrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: c.page, alignItems: 'center', justifyContent: 'center' },
   month: { fontFamily: f.extra, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
@@ -76,3 +77,5 @@ const s = StyleSheet.create({
   todayBtn: { alignSelf: 'center', marginTop: 10, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, backgroundColor: c.tint },
   todayT: { fontFamily: f.bold, fontSize: 13, color: c.limeText },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });

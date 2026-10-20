@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text, tr } from '../i18n';
 import Svg, { Circle, Line, Path, Text as SText } from 'react-native-svg';
-import { c, f } from '../theme';
+import { c, f, onTheme } from '../theme';
 import { addDays, dayKey, fmt, parseKey, sum, targets, weekDays } from '../domain';
 import { useStore } from '../store';
 import { useSteps } from '../steps';
@@ -75,7 +76,7 @@ function CardHead({ title, right }: { title: string; right?: React.ReactNode }) 
 }
 
 const RANGES: [string, string, number][] = [['1W', '1 week', 7], ['1M', '1 month', 30], ['3M', '3 months', 91], ['6M', '6 months', 182], ['1Y', '1 year', 365], ['All', 'Since inception', Infinity]];
-const shortDate = (k: string) => { const d = parseKey(k); return `${d.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}`; };
+const shortDate = (k: string) => { const d = parseKey(k); return `${d.getDate()} ${tr(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()])}`; };
 
 function WeightChart({ pts, goal }: { pts: [string, number][]; goal: number }) {
   const [w, setW] = useState(300);
@@ -168,7 +169,7 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
           <DayBars days={days} values={per.map((x) => x.kcal)} goal={t.kcal} done={per.map((x, i) => elapsed[i] && x.kcal <= t.kcal)} over={(i) => per[i].kcal > t.kcal} />
         </View>
         <Text style={s.note}>
-          {elapsed.some(Boolean) ? <><Text style={s.noteB}>{fmt(Math.abs(diff))} calories</Text> {diff >= 0 ? 'under' : 'over'} budget for week</> : 'Log meals to see your week against your budget'}
+          {elapsed.some(Boolean) ? <><Text style={s.noteB}>{fmt(Math.abs(diff))} calories</Text>{` ${diff >= 0 ? 'under' : 'over'} budget for week`}</> : 'Log meals to see your week against your budget'}
         </Text>
       </View>
 
@@ -258,7 +259,7 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
         <WeightChart pts={pts} goal={state.profile!.goalKg} />
         <View style={s.ranges}>
           {RANGES.map(([k], i) => (
-            <Pressable key={k} onPress={() => setRange(i)} style={[s.range, range === i && { backgroundColor: c.ink }]} accessibilityRole="button" accessibilityLabel={RANGES[i][1]}>
+            <Pressable key={k} onPress={() => setRange(i)} style={[s.range, range === i && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityLabel={RANGES[i][1]}>
               <Text style={[s.rangeT, range === i && { color: c.lime }]}>{k}</Text>
             </Pressable>
           ))}
@@ -269,7 +270,7 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
   );
 }
 
-const s = StyleSheet.create({
+const mkStyles = () => StyleSheet.create({
   card: { marginHorizontal: 20, marginBottom: 14, borderRadius: 28, padding: 18 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   cardT: { fontFamily: f.extra, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
@@ -294,7 +295,7 @@ const s = StyleSheet.create({
   chip: { borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
   chipT: { fontFamily: f.extra, fontSize: 14 },
   empty: { fontFamily: f.regular, fontSize: 14, color: c.muted, lineHeight: 21 },
-  plus: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  plus: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   wRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap' },
   wBig: { fontFamily: f.extra, fontSize: 30, color: c.ink, letterSpacing: -0.8 },
   wUnit: { fontFamily: f.semi, fontSize: 15, color: c.muted },
@@ -304,3 +305,5 @@ const s = StyleSheet.create({
   rangeT: { fontFamily: f.bold, fontSize: 12.5, color: c.ink },
   rangeName: { fontFamily: f.medium, fontSize: 12, color: c.muted, textAlign: 'center', marginTop: 10 },
 });
+let s = mkStyles();
+onTheme(() => { s = mkStyles(); });
