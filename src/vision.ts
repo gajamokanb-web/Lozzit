@@ -43,7 +43,7 @@ export async function readLabel(base64Jpeg: string, apiKey: string, model: strin
       signal: ctl.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: base64Jpeg } }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0, maxOutputTokens: 1024 },
+        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0 },
       }),
     });
   } catch (e) {
