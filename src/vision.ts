@@ -34,7 +34,7 @@ const PROMPT = `This is a photo of the nutrition facts table of a food product. 
 
 export async function readLabel(base64Jpeg: string, apiKey: string, model: string): Promise<LabelResult> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 45000);
+  const timer = setTimeout(() => ctl.abort(), 120000);
   let res: Response;
   try {
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || DEFAULT_MODEL)}:generateContent`, {
@@ -43,11 +43,13 @@ export async function readLabel(base64Jpeg: string, apiKey: string, model: strin
       signal: ctl.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: base64Jpeg } }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0 },
+        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0, maxOutputTokens: 1024 },
       }),
     });
-  } catch {
-    throw new Error('Could not reach Google. Check your connection and try again.');
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    if (ctl.signal.aborted) throw new Error('Google took too long to answer (over 2 min). Try again.');
+    throw new Error(`Network error while contacting Google (${m}).`);
   } finally {
     clearTimeout(timer);
   }
