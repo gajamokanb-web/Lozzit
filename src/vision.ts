@@ -32,12 +32,14 @@ const PROMPT = `This is a photo of the nutrition facts table of a food product. 
 - salt_g in grams. If only sodium is shown, salt_g = sodium in g × 2.5.
 - Use null for anything that is not on the label. Never guess. Numbers only, no units.`;
 
-export async function readLabel(base64Jpeg: string, apiKey: string, model: string): Promise<LabelResult> {
+const FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function call(base64Jpeg: string, apiKey: string, model: string): Promise<Response> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 120000);
-  let res: Response;
   try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || DEFAULT_MODEL)}:generateContent`, {
+    return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       signal: ctl.signal,
@@ -53,10 +55,28 @@ export async function readLabel(base64Jpeg: string, apiKey: string, model: strin
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function readLabel(base64Jpeg: string, apiKey: string, model: string): Promise<LabelResult> {
+  // 503 (overloaded) / 429 (quota) are temporary: retry once, then try fallback models.
+  const first = model || DEFAULT_MODEL;
+  const models = [first, ...FALLBACKS.filter((m) => m !== first)];
+  let res!: Response;
+  for (let i = 0; i < models.length; i++) {
+    res = await call(base64Jpeg, apiKey, models[i]);
+    if (res.ok) break;
+    if (res.status === 503 || res.status === 500) {
+      await wait(1500);
+      res = await call(base64Jpeg, apiKey, models[i]);
+      if (res.ok) break;
+    }
+    if (![429, 500, 503].includes(res.status) && !(res.status === 404 && i > 0)) break;
+  }
   if (!res.ok) {
     if (res.status === 400 || res.status === 403) throw new Error('Google refused the request. Check your API key and model name in Profile.');
     if (res.status === 404) throw new Error('This model name does not exist. Check the model name in Profile.');
     if (res.status === 429) throw new Error('Free quota reached for now. Try again in a minute.');
+    if (res.status === 503) throw new Error('Google servers are overloaded right now (503), even after trying other models. Try again in a minute.');
     throw new Error(`Google returned an error (${res.status}).`);
   }
   const data = await res.json();
