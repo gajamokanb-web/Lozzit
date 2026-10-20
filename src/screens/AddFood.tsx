@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from '../theme';
 import { entryBase, EXTRAS, fmt, fmtDay, MEALS, scale, scaleEntry, sum, type Base, type Entry, type MealKey, type Per } from '../domain';
@@ -12,7 +13,7 @@ import { card, Icon, P } from '../ui';
 import { FactorModal } from './Factor';
 
 export type AddTarget = { meal: MealKey; day: string; editId?: string };
-type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label';
+type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev';
 type Tab = 'search' | 'mine' | 'meals';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
@@ -150,6 +151,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [torch, setTorch] = useState(false);
   const [labelBusy, setLabelBusy] = useState(false);
   const [labelMsg, setLabelMsg] = useState('');
+  const [shot, setShot] = useState<{ uri: string; b64: string } | null>(null);
   useEffect(() => { if (mode !== 'scan' && mode !== 'label') setTorch(false); }, [mode]);
 
   const editing = target?.editId ? state.entries.find((e) => e.id === target.editId) : undefined;
@@ -287,13 +289,37 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     if (!perm?.granted) { const r = await askPerm(); if (!r.granted) return setLabelMsg('Camera permission is needed to photograph the label.'); }
     setMode('label');
   };
+  const openGallery = async () => {
+    setLabelMsg('');
+    if (!state.settings.geminiKey.trim()) return setLabelMsg('Add your Google AI Studio API key first: Profile → AI label scan.');
+    try {
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, base64: true });
+      if (r.canceled) return;
+      const a = r.assets?.[0];
+      if (!a?.base64) return setLabelMsg('This image could not be read. Pick another one.');
+      setShot({ uri: a.uri, b64: a.base64 });
+      setMode('prev');
+    } catch {
+      setLabelMsg('The gallery could not be opened.');
+    }
+  };
   const snapLabel = async () => {
     if (labelBusy || !cam.current) return;
-    setLabelBusy(true); setLabelMsg('');
+    setLabelMsg('');
     try {
       const pic = await cam.current.takePictureAsync({ quality: 0.6, base64: true, skipProcessing: true });
       if (!pic?.base64) throw new Error('The photo could not be taken. Try again.');
-      const r = await readLabel(pic.base64, state.settings.geminiKey.trim(), state.settings.geminiModel.trim() || DEFAULT_MODEL);
+      setShot({ uri: pic.uri, b64: pic.base64 });
+      setMode('prev');
+    } catch (e) {
+      setLabelMsg(e instanceof Error ? e.message : 'The photo could not be taken.');
+    }
+  };
+  const sendLabel = async () => {
+    if (labelBusy || !shot) return;
+    setLabelBusy(true); setLabelMsg('');
+    try {
+      const r = await readLabel(shot.b64, state.settings.geminiKey.trim(), state.settings.geminiModel.trim() || DEFAULT_MODEL);
       setNUnit('g');
       setNKcal(String(r.per.kcal)); setNP(String(r.per.p)); setNC(String(r.per.c)); setNF(String(r.per.f));
       setNX(EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')));
@@ -303,6 +329,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       setMode('create');
     } catch (e) {
       setLabelMsg(e instanceof Error ? e.message : 'The label could not be read.');
+      setMode('prev');
     } finally {
       setLabelBusy(false);
     }
@@ -358,9 +385,10 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     pick(fd);
   };
 
-  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label' }[mode];
+  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label', prev: 'Check the photo' }[mode];
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
+    if (mode === 'prev') return setMode('label');
     if (mode === 'icons' || mode === 'label') return setMode('create');
     if (mode === 'create') return setMode(createFrom);
     setMode('main');
@@ -550,6 +578,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         {mode === 'create' && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
             {!editKey && (
+              <View style={{ gap: 8 }}>
               <Pressable onPress={openLabel} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Scan nutrition label">
                 <Icon d={P.camera} size={20} color={c.limeText} sw={2.2} />
                 <View style={{ flex: 1 }}>
@@ -557,6 +586,14 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                   <Text style={s.resSub}>Photo read by Google Gemini (your API key)</Text>
                 </View>
               </Pressable>
+              <Pressable onPress={openGallery} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Pick a label photo from the gallery">
+                <Icon d={P.image} size={20} color={c.limeText} sw={2.2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.quickT}>Choose a photo from the gallery</Text>
+                  <Text style={s.resSub}>Use a picture you already took</Text>
+                </View>
+              </Pressable>
+              </View>
             )}
             {labelMsg ? <Text style={[s.hintS, { color: /^Values|^Only/.test(labelMsg) ? c.limeText : c.red }]}>{labelMsg}</Text> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -632,7 +669,30 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
               )}
             </View>
             {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Fit the whole nutrition table in the frame, then take the photo. The photo is sent to Google and not kept.</Text>}
-            <Pressable onPress={snapLabel} disabled={labelBusy} style={[s.shutter, { marginBottom: Math.max(bottom, 12) + 8 }, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Take photo"><View style={s.shutterIn} /></Pressable>
+            <View style={{ alignItems: 'center', justifyContent: 'center', marginBottom: Math.max(bottom, 12) + 8 }}>
+              <Pressable onPress={snapLabel} style={s.shutter} accessibilityRole="button" accessibilityLabel="Take photo"><View style={s.shutterIn} /></Pressable>
+              <Pressable onPress={openGallery} style={[s.galBtn]} accessibilityRole="button" accessibilityLabel="Pick from the gallery"><Icon d={P.image} size={24} color={c.ink} sw={2} /></Pressable>
+            </View>
+          </View>
+        )}
+
+        {mode === 'prev' && shot && (
+          <View style={{ flex: 1 }}>
+            <View style={s.camWrap}>
+              <Image source={{ uri: shot.uri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+              {labelBusy && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', gap: 12 }]}>
+                  <ActivityIndicator color="#fff" size="large" />
+                  <Text style={{ fontFamily: f.bold, color: '#fff' }}>Reading the label…</Text>
+                </View>
+              )}
+            </View>
+            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Is the table sharp and fully visible? If not, retake the photo before sending.</Text>}
+            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 14, marginBottom: Math.max(bottom, 12) + 8 }}>
+              <Pressable onPress={() => { setLabelMsg(''); setMode('label'); }} disabled={labelBusy} style={[s.prevBtn, card, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Retake"><Text style={s.quickT}>Retake</Text></Pressable>
+              <Pressable onPress={openGallery} disabled={labelBusy} style={[s.prevBtn, card, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Other photo"><Text style={s.quickT}>Gallery</Text></Pressable>
+              <Pressable onPress={sendLabel} disabled={labelBusy} style={[s.prevBtn, { backgroundColor: c.lime }, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Send"><Text style={[s.quickT, { color: c.ink }]}>Send</Text></Pressable>
+            </View>
           </View>
         )}
 
@@ -785,6 +845,8 @@ const s = StyleSheet.create({
   labelBtn: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   labelFrame: { width: '86%', height: '70%', borderRadius: 20, borderWidth: 3, borderColor: c.lime },
   shutter: { alignSelf: 'center', width: 74, height: 74, borderRadius: 37, borderWidth: 4, borderColor: c.ink, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  galBtn: { position: 'absolute', left: 28, width: 52, height: 52, borderRadius: 26, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.line },
+  prevBtn: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   shutterIn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.lime },
   pencil: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.tint, alignItems: 'center', justifyContent: 'center' },
   iconPick: { width: 84, borderRadius: 20, paddingVertical: 8, alignItems: 'center' },
