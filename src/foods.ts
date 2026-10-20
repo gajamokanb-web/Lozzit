@@ -7,7 +7,9 @@ export type Food = {
   per: Per; // per 100 g (or 100 ml)
   unit: 'g' | 'ml';
   portion?: { label: string; size: number };
-  src: 'ciqual' | 'off';
+  src: 'ciqual' | 'off' | 'custom';
+  barcode?: string;
+  icon?: string;
 };
 
 /* ── Ciqual (ANSES, Table de composition nutritionnelle 2025, Licence Ouverte Etalab 2.0) ─────────
@@ -15,7 +17,7 @@ export type Food = {
 type Row = [number, string, number, number, number, number, number];
 let rows: { r: Row; n: string }[] | null = null;
 
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe');
+export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe');
 
 function load() {
   if (!rows) rows = (require('../assets/ciqual.json') as Row[]).map((r) => ({ r, n: norm(r[1]) }));
@@ -78,13 +80,8 @@ function offFood(p: any): Food | null {
     unit: liquid ? 'ml' : 'g',
     portion: sq > 0 ? { label: `1 serving (${Math.round(sq)} ${liquid ? 'ml' : 'g'})`, size: sq } : undefined,
     src: 'off',
+    barcode: String(p.code),
   };
-}
-
-export async function searchOff(query: string): Promise<Food[]> {
-  const url = `${OFF}/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=25&lc=fr&fields=${FIELDS}`;
-  const d = await getJson(url);
-  return ((d.products ?? []) as any[]).map(offFood).filter((x): x is Food => !!x);
 }
 
 /** null = product not in the database (or without nutrition data). Throws when offline. */
@@ -92,3 +89,13 @@ export async function lookupBarcode(code: string): Promise<Food | null> {
   const d = await getJson(`${OFF}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`);
   return d.status === 1 ? offFood({ ...d.product, code }) : null;
 }
+
+/** Foods of the user's own database matching a query (all words must appear in the name or brand). */
+export function searchMine(foods: Food[], query: string, limit = 40): Food[] {
+  const toks = norm(query).split(/[\s,]+/).filter(Boolean);
+  if (!toks.length) return [];
+  return foods.filter((fd) => { const n = norm(`${fd.name} ${fd.brand ?? ''}`); return toks.every((t) => n.includes(t)); }).slice(0, limit);
+}
+
+export const sortKey = (name: string) => norm(name);
+export const letterOf = (name: string) => { const l = norm(name).trim().charAt(0).toUpperCase(); return l >= 'A' && l <= 'Z' ? l : '#'; };

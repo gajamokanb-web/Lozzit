@@ -17,6 +17,7 @@ import { BottomNav, type Tab } from './ui';
 import { Onboarding } from './screens/Onboarding';
 import { Home } from './screens/Home';
 import { AddFood, type AddTarget } from './screens/AddFood';
+import { AddSheet } from './screens/AddSheet';
 import { Logs, Profile, Stats } from './screens/Others';
 import { Calendar } from './screens/Calendar';
 
@@ -31,6 +32,7 @@ function Root() {
   const [selected, setSelected] = useState(dayKey());
   const [calendar, setCalendar] = useState(false);
   const [adding, setAdding] = useState<AddTarget | null>(null);
+  const [sheet, setSheet] = useState(false);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.page }} />;
   if (!state.profile) return <Onboarding onDone={(p) => { setTab('home'); setProfile(p); }} />;
@@ -43,7 +45,8 @@ function Root() {
       {tab === 'stats' && <Stats />}
       {tab === 'meals' && <Logs onPickDay={(k) => { setSelected(k); setTab('home'); }} />}
       {tab === 'profile' && <Profile />}
-      <BottomNav tab={tab} onTab={setTab} onScan={() => setAdding({ meal: hourMeal(), day: selected, mode: 'scan' })} />
+      <BottomNav tab={tab} onTab={setTab} onAdd={() => setSheet(true)} />
+      <AddSheet visible={sheet} day={selected} suggested={hourMeal()} onClose={() => setSheet(false)} onMeal={(m) => { setSheet(false); setAdding({ meal: m, day: selected }); }} />
       <Calendar visible={calendar} selected={selected} marks={new Set(state.entries.map((e) => e.day))} onPick={setSelected} onClose={() => setCalendar(false)} />
       <AddFood target={adding} onClose={() => setAdding(null)} />
     </View>

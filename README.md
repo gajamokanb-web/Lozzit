@@ -23,3 +23,7 @@ Font: Plus Jakarta Sans. Icons: Lucide (ISC). Meal photos: Wikimedia Commons, CC
 - Foods: Anses, Table de composition nutritionnelle Ciqual 2025 (Licence Ouverte Etalab 2.0), bundled in `assets/ciqual.json` (compact copy via github.com/ar11tehau/food, usual portions from Anses INCA3).
 - Packaged products and barcodes: Open Food Facts (ODbL), queried online.
 - Steps: Health Connect (Google Fit, Mi Fitness, Samsung Health…), source selectable in Profile.
+
+## Food logos
+
+Food and meal icons in `assets/food` and `assets/meals` come from the user's own screenshots of a Lose It-style icon set (personal use). `src/foodIcons.tsx` suggests an icon from the food name (French keywords).

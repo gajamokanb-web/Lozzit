@@ -21,6 +21,7 @@ export const P = {
   chevDown: ['m6 9 6 6 6-6'],
   chevUp: ['m18 15-6-6-6 6'],
   minus: ['M5 12h14'],
+  weight: ['M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.48 8Z'],
 };
 
 export function Icon({ d, size = 24, color = c.ink, fill = 'none', sw = 2 }: { d: string[]; size?: number; color?: string; fill?: string; sw?: number }) {
@@ -51,7 +52,7 @@ export function Title({ children }: { children: string }) {
 
 const LABELS: Record<Tab, string> = { home: 'Dashboard', stats: 'Stats', meals: 'Logs', profile: 'Profile' };
 
-export function BottomNav({ tab, onTab, onScan }: { tab: Tab; onTab: (t: Tab) => void; onScan: () => void }) {
+export function BottomNav({ tab, onTab, onAdd }: { tab: Tab; onTab: (t: Tab) => void; onAdd: () => void }) {
   const { bottom } = useSafeAreaInsets();
   const Item = ({ t, d, fill }: { t: Tab; d: string[]; fill?: boolean }) => {
     const on = tab === t;
@@ -71,8 +72,8 @@ export function BottomNav({ tab, onTab, onScan }: { tab: Tab; onTab: (t: Tab) =>
         <Item t="meals" d={P.meals} />
         <Item t="profile" d={P.user} />
       </View>
-      <Pressable style={s.scan} onPress={onScan} accessibilityRole="button" accessibilityLabel="Add food">
-        <Icon d={P.scan} size={26} sw={2.3} />
+      <Pressable style={s.scan} onPress={onAdd} accessibilityRole="button" accessibilityLabel="Add">
+        <Icon d={P.plus} size={30} sw={2.6} />
       </Pressable>
     </View>
   );

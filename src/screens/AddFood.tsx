@@ -1,27 +1,33 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from '../theme';
-import { entryBase, fmt, MEALS, scale, type Base, type MealKey } from '../domain';
-import { lookupBarcode, searchCiqual, searchOff, type Food } from '../foods';
+import { entryBase, fmt, fmtDay, MEALS, scale, sum, type Base, type Entry, type MealKey } from '../domain';
+import { letterOf, lookupBarcode, searchCiqual, searchMine, sortKey, type Food } from '../foods';
+import { FOOD_ICON_LIST, FoodIcon, suggestIcon } from '../foodIcons';
 import { useStore } from '../store';
 import { card, Icon, P } from '../ui';
 
-export type AddTarget = { meal: MealKey; day: string; editId?: string; mode?: 'search' | 'scan' };
-type Mode = 'search' | 'scan' | 'quick' | 'qty';
+export type AddTarget = { meal: MealKey; day: string; editId?: string };
+type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons';
+type Tab = 'search' | 'mine' | 'meals';
+type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
 const num = (t: string) => {
   const n = parseFloat(t.replace(',', '.'));
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 const unitLabel = (u: Base['unit'], q: number) => (u === 'srv' ? (q === 1 ? 'serving' : 'servings') : u);
+const ROW_H = 64;
+const HEAD_H = 36;
 
-function FoodRow({ food, onPress }: { food: Food; onPress: () => void }) {
+function FoodRow({ food, onPress, fixed }: { food: Food; onPress: () => void; fixed?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={s.res} accessibilityRole="button">
+    <Pressable onPress={onPress} style={[s.res, fixed && { height: ROW_H }]} accessibilityRole="button">
+      <FoodIcon name={food.name} icon={food.icon} size={42} />
       <View style={{ flex: 1 }}>
-        <Text style={s.resName} numberOfLines={2}>{food.name}</Text>
+        <Text style={s.resName} numberOfLines={fixed ? 1 : 2}>{food.name}</Text>
         {food.brand ? <Text style={s.resSub} numberOfLines={1}>{food.brand}</Text> : null}
       </View>
       <View style={{ alignItems: 'flex-end' }}>
@@ -32,32 +38,114 @@ function FoodRow({ food, onPress }: { food: Food; onPress: () => void }) {
   );
 }
 
+type Item = { t: 'h'; letter: string } | { t: 'f'; food: Food };
+
+/** Alphabetical list with an A–Z strip on the right to jump to a letter. */
+function AlphaList({ foods, onPick, bottom }: { foods: Food[]; onPick: (fd: Food) => void; bottom: number }) {
+  const ref = useRef<FlatList<Item>>(null);
+  const [barH, setBarH] = useState(0);
+  const [active, setActive] = useState<string | null>(null);
+  const { items, offsets, letters } = useMemo(() => {
+    const items: Item[] = [];
+    const offsets: Record<string, number> = {};
+    const letters: string[] = [];
+    let y = 0;
+    let cur = '';
+    for (const fd of foods) {
+      const l = letterOf(fd.name);
+      if (l !== cur) { cur = l; offsets[l] = y; letters.push(l); items.push({ t: 'h', letter: l }); y += HEAD_H; }
+      items.push({ t: 'f', food: fd });
+      y += ROW_H;
+    }
+    return { items, offsets, letters };
+  }, [foods]);
+
+  const jump = (y: number) => {
+    if (!letters.length || barH <= 0) return;
+    const i = Math.max(0, Math.min(letters.length - 1, Math.floor((y / barH) * letters.length)));
+    setActive(letters[i]);
+    ref.current?.scrollToOffset({ offset: offsets[letters[i]], animated: false });
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <FlatList
+        ref={ref}
+        data={items}
+        keyExtractor={(it, i) => (it.t === 'h' ? `h${it.letter}` : `${it.food.key}-${i}`)}
+        getItemLayout={(_, i) => ({ length: items[i].t === 'h' ? HEAD_H : ROW_H, offset: items.slice(0, i).reduce((a, it) => a + (it.t === 'h' ? HEAD_H : ROW_H), 0), index: i })}
+        renderItem={({ item }) =>
+          item.t === 'h' ? (
+            <View style={s.letterHead}><Text style={s.letterHeadT}>{item.letter}</Text></View>
+          ) : (
+            <FoodRow food={item.food} onPress={() => onPick(item.food)} fixed />
+          )
+        }
+        contentContainerStyle={{ paddingLeft: 20, paddingRight: 36, paddingBottom: bottom + 20 }}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={20}
+        windowSize={9}
+      />
+      {letters.length > 1 && (
+        <View
+          style={s.bar}
+          onLayout={(e) => setBarH(e.nativeEvent.layout.height)}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={(e) => jump(e.nativeEvent.locationY)}
+          onResponderMove={(e) => jump(e.nativeEvent.locationY)}
+          onResponderRelease={() => setActive(null)}
+          onResponderTerminate={() => setActive(null)}
+        >
+          <View pointerEvents="none" style={{ flex: 1, justifyContent: 'space-around', alignItems: 'center' }}>
+            {letters.map((l) => <Text key={l} style={[s.barL, active === l && { color: c.ink }]}>{l}</Text>)}
+          </View>
+        </View>
+      )}
+      {active && <View style={s.bubble} pointerEvents="none"><Text style={s.bubbleT}>{active}</Text></View>}
+    </View>
+  );
+}
+
 export function AddFood({ target, onClose }: { target: AddTarget | null; onClose: () => void }) {
-  const { state, addEntry, updateEntry, removeEntry } = useStore();
+  const { state, addEntry, updateEntry, removeEntry, saveFood } = useStore();
   const { top, bottom } = useSafeAreaInsets();
   const [perm, askPerm] = useCameraPermissions();
 
-  const [mode, setMode] = useState<Mode>('search');
+  const [mode, setMode] = useState<Mode>('main');
+  const [tab, setTab] = useState<Tab>('search');
   const [meal, setMeal] = useState<MealKey>('breakfast');
   const [query, setQuery] = useState('');
-  const [online, setOnline] = useState(false);
-  const [offRes, setOffRes] = useState<Food[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const [food, setFood] = useState<{ name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion'] } | null>(null);
+  const [miss, setMiss] = useState<{ code: string; offline: boolean } | null>(null);
+  const [food, setFood] = useState<Chosen | null>(null);
   const [qty, setQty] = useState('');
   const [qName, setQName] = useState('');
   const [qKcal, setQKcal] = useState('');
   const [qP, setQP] = useState('');
   const [qC, setQC] = useState('');
   const [qF, setQF] = useState('');
+  // create-food form
+  const [nName, setNName] = useState('');
+  const [nBrand, setNBrand] = useState('');
+  const [nUnit, setNUnit] = useState<'g' | 'ml'>('g');
+  const [nKcal, setNKcal] = useState('');
+  const [nP, setNP] = useState('');
+  const [nC, setNC] = useState('');
+  const [nF, setNF] = useState('');
+  const [nPortion, setNPortion] = useState('');
+  const [nCode, setNCode] = useState('');
+  const [nIcon, setNIcon] = useState<string | undefined>(undefined);
+  const [nIconTouched, setNIconTouched] = useState(false);
+  const [iconQ, setIconQ] = useState('');
+  const [createFrom, setCreateFrom] = useState<Mode>('main');
   const scanned = useRef(false);
 
   const editing = target?.editId ? state.entries.find((e) => e.id === target.editId) : undefined;
 
   useEffect(() => {
     if (!target) return;
-    setMeal(target.meal); setQuery(''); setOnline(false); setOffRes(null); setErr(''); setBusy(false);
+    setMeal(target.meal); setQuery(''); setBusy(false); setMiss(null); setTab('search');
     setQName(''); setQKcal(''); setQP(''); setQC(''); setQF('');
     scanned.current = false;
     const e = target.editId ? state.entries.find((x) => x.id === target.editId) : undefined;
@@ -69,49 +157,63 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       setMode('qty');
     } else {
       setFood(null);
-      setMode(target.mode ?? 'search');
+      setMode('main');
     }
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Foods already logged on this day are not offered again: tap them on the dashboard to change the quantity.
   const todayKeys = useMemo(() => new Set(state.entries.filter((e) => e.day === target?.day).map((e) => e.fk ?? e.name)), [state.entries, target?.day]);
+
+  /** Own database: everything saved (added, scanned, created) + foods found in older log entries. */
+  const mine = useMemo(() => {
+    const m = new Map<string, Food>(Object.entries(state.foods));
+    for (const e of state.entries) {
+      if (!e.fk || m.has(e.fk) || !e.base || e.base.size !== 100) continue;
+      m.set(e.fk, { key: e.fk, name: e.name, brand: e.brand, per: { kcal: e.base.kcal, p: e.base.p, c: e.base.c, f: e.base.f }, unit: e.base.unit === 'ml' ? 'ml' : 'g', portion: e.portion, src: e.fk.startsWith('off:') ? 'off' : 'ciqual' });
+    }
+    return [...m.values()];
+  }, [state.foods, state.entries]);
+  const mineSorted = useMemo(() => mine.filter((x) => !todayKeys.has(x.key)).sort((a, b) => sortKey(a.name).localeCompare(sortKey(b.name))), [mine, todayKeys]);
+  const hiddenToday = mine.length - mineSorted.length;
+
   const recents = useMemo(() => {
     const seen = new Set<string>();
     const out: Food[] = [];
+    const byKey = new Map(mine.map((x) => [x.key, x]));
     for (const e of [...state.entries].reverse()) {
       const k = e.fk ?? e.name;
-      if (!e.base || e.base.size !== 100 || seen.has(k) || todayKeys.has(k)) continue;
+      const fd = e.fk ? byKey.get(e.fk) : undefined;
+      if (!fd || seen.has(k) || todayKeys.has(k)) continue;
       seen.add(k);
-      out.push({ key: k, name: e.name, brand: e.brand, per: e.base, unit: e.base.unit === 'ml' ? 'ml' : 'g', portion: e.portion, src: k.startsWith('off:') ? 'off' : 'ciqual' });
+      out.push(fd);
       if (out.length >= 12) break;
     }
     return out;
-  }, [state.entries, todayKeys]);
+  }, [state.entries, mine, todayKeys]);
 
-  const local = useMemo(() => (query.trim().length >= 2 ? searchCiqual(query) : []), [query]);
+  const results = useMemo(() => {
+    if (query.trim().length < 2) return [];
+    const mineHits = searchMine(mine, query).filter((x) => !todayKeys.has(x.key));
+    const keys = new Set(mineHits.map((x) => x.key));
+    return [...mineHits, ...searchCiqual(query).filter((x) => !keys.has(x.key) && !todayKeys.has(x.key))];
+  }, [query, mine, todayKeys]);
 
-  // Open Food Facts search runs shortly after typing stops
-  useEffect(() => {
-    if (!online || query.trim().length < 3) { setOffRes(null); setErr(''); return; }
-    let live = true;
-    setBusy(true); setErr('');
-    const t = setTimeout(async () => {
-      try {
-        const r = await searchOff(query.trim());
-        if (live) setOffRes(r);
-      } catch {
-        if (live) { setOffRes([]); setErr('Open Food Facts is not reachable. Check your connection and try again.'); }
-      } finally {
-        if (live) setBusy(false);
-      }
-    }, 600);
-    return () => { live = false; clearTimeout(t); };
-  }, [query, online]);
+  const blocks = useMemo(() => {
+    const g = new Map<string, { day: string; meal: MealKey; entries: Entry[] }>();
+    for (const e of state.entries) {
+      if (target && e.day === target.day && e.meal === target.meal) continue;
+      const k = `${e.day}|${e.meal}`;
+      if (!g.has(k)) g.set(k, { day: e.day, meal: e.meal, entries: [] });
+      g.get(k)!.entries.push(e);
+    }
+    const order = (m: MealKey) => MEALS.findIndex((x) => x.key === m);
+    return [...g.values()].sort((a, b) => (a.day === b.day ? order(a.meal) - order(b.meal) : a.day < b.day ? 1 : -1));
+  }, [state.entries, target?.day, target?.meal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!target) return null;
 
   const pick = (fd: Food) => {
-    setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion });
+    setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
     setQty(String(fd.portion?.size ?? 100));
     setMode('qty');
   };
@@ -119,17 +221,18 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const onScan = async ({ data }: { data: string }) => {
     if (scanned.current) return;
     scanned.current = true;
-    setBusy(true); setErr('');
+    setBusy(true); setMiss(null);
+    // 1) own database, 2) Open Food Facts (then kept locally), 3) offer to create the food
+    const own = mine.find((x) => x.barcode === data);
+    if (own) { setBusy(false); return pick(own); }
     try {
       const fd = await lookupBarcode(data);
-      if (fd) return pick(fd);
-      setErr(`No product found for ${data}. Search by name or use Quick add.`);
+      if (fd) { saveFood(fd); setBusy(false); return pick(fd); }
+      setMiss({ code: data, offline: false });
     } catch {
-      setErr('Open Food Facts is not reachable. Check your connection and try again.');
-    } finally {
-      setBusy(false);
-      setTimeout(() => { scanned.current = false; }, 2500);
+      setMiss({ code: data, offline: true });
     }
+    setBusy(false);
   };
 
   const q = num(qty);
@@ -140,7 +243,13 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     if (!food || !totals || q <= 0) return;
     const common = { name: food.name, brand: food.brand, ...totals, base: food.base, qty: q, fk: food.fk, portion: food.portion };
     if (editing) updateEntry(editing.id, common);
-    else addEntry({ day: target.day, meal, ...common });
+    else {
+      addEntry({ day: target.day, meal, ...common });
+      if (food.fk && food.base.size === 100 && food.base.unit !== 'srv') {
+        const { kcal, p, c: carbs, f: fat, unit } = food.base;
+        saveFood({ key: food.fk, name: food.name, brand: food.brand, per: { kcal, p, c: carbs, f: fat }, unit, portion: food.portion, src: food.src ?? 'ciqual', icon: food.icon, barcode: food.barcode });
+      }
+    }
     onClose();
   };
   const quickAdd = () => {
@@ -151,67 +260,162 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     addEntry({ day: target.day, meal, name: qName.trim() || label, ...per, base: { ...per, size: 1, unit: 'srv' }, qty: 1 });
     onClose();
   };
+  const copyBlock = (entries: Entry[]) => {
+    for (const e of entries) {
+      const { id, day, meal: _m, ...rest } = e; // eslint-disable-line @typescript-eslint/no-unused-vars
+      addEntry({ ...rest, day: target.day, meal: target.meal });
+    }
+    onClose();
+  };
 
-  const title = mode === 'qty' ? (editing ? 'Edit quantity' : 'Add to log') : mode === 'quick' ? 'Quick add' : mode === 'scan' ? 'Scan barcode' : 'Add food';
-  const back = mode === 'qty' && !editing ? () => setMode('search') : mode === 'quick' || mode === 'scan' ? () => setMode('search') : onClose;
+  const openCreate = (from: Mode, preset?: { name?: string; code?: string }) => {
+    const name = preset?.name ?? '';
+    setNName(name); setNBrand(''); setNUnit('g'); setNKcal(''); setNP(''); setNC(''); setNF(''); setNPortion('');
+    setNCode(preset?.code ?? ''); setNIcon(suggestIcon(name)); setNIconTouched(false); setCreateFrom(from);
+    setMode('create');
+  };
+  const createOk = nName.trim().length > 0 && num(nKcal) > 0;
+  const createFood = () => {
+    if (!createOk) return;
+    const code = nCode.trim();
+    const portion = num(nPortion) > 0 ? { label: `1 portion (${num(nPortion)} ${nUnit})`, size: num(nPortion) } : undefined;
+    const fd: Food = {
+      key: code ? `my:${code}` : `my:${Date.now().toString(36)}`,
+      name: nName.trim(),
+      brand: nBrand.trim() || undefined,
+      per: { kcal: Math.round(num(nKcal)), p: num(nP), c: num(nC), f: num(nF) },
+      unit: nUnit,
+      portion,
+      src: 'custom',
+      barcode: code || undefined,
+      icon: nIcon,
+    };
+    saveFood(fd);
+    pick(fd);
+  };
+
+  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: 'Create food', icons: 'Choose a logo' }[mode];
+  const back = () => {
+    if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
+    if (mode === 'icons') return setMode('create');
+    if (mode === 'create') return setMode(createFrom);
+    setMode('main');
+  };
+  const mealLabel = MEALS.find((m) => m.key === meal)!.label;
 
   return (
     <Modal visible animationType="slide" onRequestClose={back} statusBarTranslucent>
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.page }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[s.head, { paddingTop: top + 10 }]}>
-          <Pressable onPress={back} style={s.round} accessibilityLabel="Back"><Icon d={mode === 'search' ? P.x : P.back} size={20} /></Pressable>
-          <Text style={s.h}>{title}</Text>
+          <Pressable onPress={back} style={s.round} accessibilityLabel="Back"><Icon d={mode === 'main' ? P.x : P.back} size={20} /></Pressable>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={s.h}>{title}</Text>
+            {mode === 'main' && <Text style={s.headSub}>{mealLabel}</Text>}
+          </View>
           <View style={{ width: 42 }} />
         </View>
 
-        {mode === 'search' && (
+        {mode === 'main' && (
           <>
-            <View style={s.searchRow}>
-              <TextInput
-                style={s.search}
-                value={query}
-                onChangeText={setQuery}
-                placeholder={online ? 'Search brands (Open Food Facts)' : 'Search foods (Ciqual)'}
-                placeholderTextColor={c.soft}
-                autoFocus={!target.mode}
-                returnKeyType="search"
-                selectionColor={c.lime}
-              />
-              <Pressable onPress={() => { setErr(''); setMode('scan'); }} style={s.scanBtn} accessibilityLabel="Scan barcode"><Icon d={P.scan} size={22} /></Pressable>
-            </View>
-            <View style={s.seg}>
-              {[['Foods · Ciqual', false], ['Brands · Open Food Facts', true]].map(([l, v]) => (
-                <Pressable key={l as string} onPress={() => setOnline(v as boolean)} style={[s.segB, online === v && { backgroundColor: c.ink }]}>
-                  <Text style={[s.segT, online === v && { color: c.lime }]}>{l as string}</Text>
+            <View style={s.tabs}>
+              {([['search', 'Search'], ['mine', 'My Foods'], ['meals', 'Meals']] as const).map(([k, l]) => (
+                <Pressable key={k} onPress={() => setTab(k)} style={[s.tabB, tab === k && { backgroundColor: c.ink }]} accessibilityRole="button">
+                  <Text style={[s.tabT, tab === k && { color: c.lime }]}>{l}</Text>
                 </Pressable>
               ))}
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: Math.max(bottom, 16) + 20 }}>
-              {query.trim().length === 0 && (
-                <>
-                  <Pressable onPress={() => setMode('quick')} style={[s.quick, card]} accessibilityRole="button">
-                    <Icon d={P.plus} size={18} color={c.limeText} sw={2.6} />
-                    <Text style={s.quickT}>Quick add calories</Text>
-                  </Pressable>
-                  {recents.length > 0 && <Text style={s.sect}>Recent</Text>}
-                  {recents.map((fd) => <FoodRow key={fd.key} food={fd} onPress={() => pick(fd)} />)}
-                  {recents.length === 0 && <Text style={s.hint}>Type a food name, or scan a barcode.</Text>}
-                </>
-              )}
-              {!online && query.trim().length > 0 && query.trim().length < 2 && <Text style={s.hint}>Keep typing…</Text>}
-              {!online && local.map((fd) => <FoodRow key={fd.key} food={fd} onPress={() => pick(fd)} />)}
-              {!online && local.length === 0 && query.trim().length >= 2 && (
-                <Text style={s.hint}>Nothing in Ciqual for "{query}". Try “Brands” for packaged products.</Text>
-              )}
-              {online && query.trim().length > 0 && query.trim().length < 3 && <Text style={s.hint}>Keep typing…</Text>}
-              {online && busy && <ActivityIndicator color={c.limeText} style={{ marginTop: 24 }} />}
-              {online && !busy && err ? <Text style={s.err}>{err}</Text> : null}
-              {online && !busy && !err && offRes && offRes.length === 0 && <Text style={s.hint}>No product found.</Text>}
-              {online && !busy && offRes?.map((fd) => <FoodRow key={fd.key} food={fd} onPress={() => pick(fd)} />)}
-              {query.trim().length > 0 && (
-                <Text style={s.credit}>{online ? 'Product data: Open Food Facts (ODbL).' : 'Source: Anses, Table de composition nutritionnelle Ciqual 2025 (Licence Ouverte Etalab 2.0).'}</Text>
-              )}
-            </ScrollView>
+
+            {tab === 'search' && (
+              <>
+                <View style={s.searchRow}>
+                  <TextInput
+                    style={s.search}
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search a food"
+                    placeholderTextColor={c.soft}
+                    returnKeyType="search"
+                    selectionColor={c.lime}
+                    autoCorrect={false}
+                  />
+                  <Pressable onPress={() => { setMiss(null); scanned.current = false; setMode('scan'); }} style={s.scanBtn} accessibilityLabel="Scan barcode"><Icon d={P.scan} size={22} /></Pressable>
+                </View>
+                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20 }}>
+                  {query.trim().length === 0 && (
+                    <>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <Pressable onPress={() => setMode('quick')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
+                          <Icon d={P.flame} size={18} color={c.limeText} sw={2.4} />
+                          <Text style={s.quickT}>Quick add</Text>
+                        </Pressable>
+                        <Pressable onPress={() => openCreate('main')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
+                          <Icon d={P.plus} size={18} color={c.limeText} sw={2.6} />
+                          <Text style={s.quickT}>Create food</Text>
+                        </Pressable>
+                      </View>
+                      {recents.length > 0 && <Text style={s.sect}>Recent</Text>}
+                      {recents.map((fd) => <FoodRow key={fd.key} food={fd} onPress={() => pick(fd)} />)}
+                      {recents.length === 0 && <Text style={s.hint}>Type a food name, or scan a barcode.</Text>}
+                    </>
+                  )}
+                  {query.trim().length === 1 && <Text style={s.hint}>Keep typing…</Text>}
+                  {results.map((fd) => <FoodRow key={fd.key} food={fd} onPress={() => pick(fd)} />)}
+                  {query.trim().length >= 2 && results.length === 0 && (
+                    <>
+                      <Text style={s.hint}>Nothing found for "{query}".</Text>
+                      <Pressable onPress={() => openCreate('main', { name: query.trim() })} style={{ paddingVertical: 12 }}><Text style={s.link}>Create “{query.trim()}”</Text></Pressable>
+                    </>
+                  )}
+                  {query.trim().length >= 2 && <Text style={s.credit}>Source: Anses, Table de composition nutritionnelle Ciqual 2025 (Licence Ouverte Etalab 2.0).</Text>}
+                </ScrollView>
+              </>
+            )}
+
+            {tab === 'mine' && (
+              <View style={{ flex: 1 }}>
+                <View style={s.mineHead}>
+                  <Text style={s.hintS}>{mineSorted.length} food{mineSorted.length === 1 ? '' : 's'}{hiddenToday > 0 ? ` · ${hiddenToday} already logged today` : ''}</Text>
+                  <Pressable onPress={() => openCreate('main')} accessibilityRole="button"><Text style={s.link}>+ Create food</Text></Pressable>
+                </View>
+                {mineSorted.length === 0 ? (
+                  <Text style={[s.hint, { marginHorizontal: 20 }]}>{mine.length === 0 ? 'Foods you add, scan or create will be listed here, A to Z.' : 'Everything is already logged today.'}</Text>
+                ) : (
+                  <AlphaList foods={mineSorted} onPick={pick} bottom={Math.max(bottom, 16)} />
+                )}
+              </View>
+            )}
+
+            {tab === 'meals' && (
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20, gap: 12 }}>
+                <Text style={s.hintS}>Copy a meal from a previous day into {mealLabel.toLowerCase()}.</Text>
+                {blocks.length === 0 && <Text style={s.hint}>Meals you have logged will appear here, most recent first.</Text>}
+                {blocks.map((b) => {
+                  const label = MEALS.find((m) => m.key === b.meal)!.label;
+                  return (
+                    <View key={`${b.day}|${b.meal}`} style={[s.mealCard, card]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.mealDay}>{fmtDay(b.day)}</Text>
+                          <Text style={s.resSub}>{label} · {fmt(sum(b.entries, 'kcal'))} kcal</Text>
+                        </View>
+                        <Pressable onPress={() => copyBlock(b.entries)} style={s.copyBtn} accessibilityRole="button" accessibilityLabel={`Copy ${label} of ${fmtDay(b.day)}`}>
+                          <Text style={s.copyT}>Copy</Text>
+                        </Pressable>
+                      </View>
+                      <View style={{ marginTop: 8 }}>
+                        {b.entries.map((e) => (
+                          <View key={e.id} style={s.mealItem}>
+                            <FoodIcon name={e.name} size={26} />
+                            <Text style={s.mealItemName} numberOfLines={1}>{e.name}</Text>
+                            <Text style={s.mealItemKcal}>{fmt(e.kcal)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
           </>
         )}
 
@@ -223,7 +427,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                   style={StyleSheet.absoluteFill}
                   facing="back"
                   barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'] }}
-                  onBarcodeScanned={onScan}
+                  onBarcodeScanned={miss ? undefined : onScan}
                 />
                 <View style={s.frame} pointerEvents="none" />
                 {busy && <ActivityIndicator color="#fff" size="large" style={StyleSheet.absoluteFill} />}
@@ -234,8 +438,16 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 <Pressable onPress={askPerm} style={[s.cta, { alignSelf: 'stretch', marginTop: 16 }]}><Text style={s.ctaText}>Allow camera</Text></Pressable>
               </View>
             )}
-            {err ? <Text style={[s.err, { marginHorizontal: 20 }]}>{err}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 14 }]}>Point the camera at a barcode.</Text>}
-            <Pressable onPress={() => setMode('search')} style={{ alignSelf: 'center', padding: 16, marginBottom: Math.max(bottom, 8) }}>
+            {miss ? (
+              <View style={{ marginHorizontal: 20, gap: 10 }}>
+                <Text style={s.err}>{miss.offline ? `Open Food Facts is not reachable, and ${miss.code} is not in your foods yet.` : `${miss.code} is not in your foods or in Open Food Facts.`}</Text>
+                <Pressable onPress={() => openCreate('scan', { code: miss.code })} style={s.cta} accessibilityRole="button"><Text style={s.ctaText}>Create this food</Text></Pressable>
+                <Pressable onPress={() => { setMiss(null); scanned.current = false; }} style={{ alignSelf: 'center', padding: 8 }}><Text style={s.link}>Scan again</Text></Pressable>
+              </View>
+            ) : (
+              <Text style={[s.hint, { textAlign: 'center', marginTop: 14 }]}>Point the camera at a barcode.</Text>
+            )}
+            <Pressable onPress={() => setMode('main')} style={{ alignSelf: 'center', padding: 16, marginBottom: Math.max(bottom, 8) }}>
               <Text style={s.link}>Search by name instead</Text>
             </Pressable>
           </View>
@@ -261,11 +473,86 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           </ScrollView>
         )}
 
+        {mode === 'create' && (
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable onPress={() => { setIconQ(''); setMode('icons'); }} style={[s.iconPick, card]} accessibilityRole="button" accessibilityLabel="Choose a logo">
+                <FoodIcon name={nName} icon={nIcon} size={52} />
+                <Text style={s.iconPickT}>Change</Text>
+              </Pressable>
+              <TextInput
+                style={[s.input, { flex: 1 }]}
+                value={nName}
+                onChangeText={(t) => { setNName(t); if (!nIconTouched) setNIcon(suggestIcon(t)); }}
+                placeholder="Food name"
+                placeholderTextColor={c.soft}
+                maxLength={60}
+                selectionColor={c.lime}
+                autoFocus
+              />
+            </View>
+            <TextInput style={s.input} value={nBrand} onChangeText={setNBrand} placeholder="Brand (optional)" placeholderTextColor={c.soft} maxLength={40} selectionColor={c.lime} />
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <Text style={s.fieldL}>Values per 100</Text>
+              {(['g', 'ml'] as const).map((u) => (
+                <Pressable key={u} onPress={() => setNUnit(u)} style={[s.mchip, nUnit === u && { backgroundColor: c.ink }]}>
+                  <Text style={[s.mchipText, nUnit === u && { color: c.lime }]}>{u}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={s.kcalBox}>
+              <TextInput style={s.kcalInput} value={nKcal} onChangeText={setNKcal} placeholder="0" placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectionColor={c.lime} />
+              <Text style={s.unit}>kcal</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {([['Protein', nP, setNP], ['Carbs', nC, setNC], ['Fat', nF, setNF]] as const).map(([l, v, set]) => (
+                <View key={l} style={s.macro}>
+                  <Text style={s.macroL}>{l} (g)</Text>
+                  <TextInput style={s.macroIn} value={v} onChangeText={set} placeholder="0" placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectionColor={c.lime} />
+                </View>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={[s.macro, { flex: 1 }]}>
+                <Text style={s.macroL}>1 portion ({nUnit}, optional)</Text>
+                <TextInput style={s.macroIn} value={nPortion} onChangeText={setNPortion} placeholder="—" placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectionColor={c.lime} />
+              </View>
+              <View style={[s.macro, { flex: 1.3 }]}>
+                <Text style={s.macroL}>Barcode (optional)</Text>
+                <TextInput style={s.macroIn} value={nCode} onChangeText={setNCode} placeholder="—" placeholderTextColor={c.soft} keyboardType="number-pad" maxLength={14} selectionColor={c.lime} />
+              </View>
+            </View>
+            <Pressable onPress={createFood} disabled={!createOk} style={[s.cta, !createOk && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.ctaText}>Save food</Text></Pressable>
+          </ScrollView>
+        )}
+
+        {mode === 'icons' && (
+          <View style={{ flex: 1 }}>
+            <TextInput style={[s.input, { marginHorizontal: 20, marginBottom: 8 }]} value={iconQ} onChangeText={setIconQ} placeholder="Filter (English names)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} />
+            <FlatList
+              data={FOOD_ICON_LIST.filter((i) => i.name.toLowerCase().includes(iconQ.trim().toLowerCase()))}
+              keyExtractor={(i) => i.key}
+              numColumns={4}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: Math.max(bottom, 16) + 20 }}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <Pressable onPress={() => { setNIcon(item.key); setNIconTouched(true); setMode('create'); }} style={[s.iconCell, nIcon === item.key && { backgroundColor: c.tint }]} accessibilityLabel={item.name}>
+                  <FoodIcon name="" icon={item.key} size={48} />
+                  <Text style={s.iconCellT} numberOfLines={2}>{item.name}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        )}
+
         {mode === 'qty' && food && totals && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: Math.max(bottom, 16) + 20 }}>
-            <View>
-              <Text style={s.foodName}>{food.name}</Text>
-              {food.brand ? <Text style={s.resSub}>{food.brand}</Text> : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <FoodIcon name={food.name} icon={food.icon} size={56} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.foodName}>{food.name}</Text>
+                {food.brand ? <Text style={s.resSub}>{food.brand}</Text> : null}
+              </View>
             </View>
             {!editing && <MealChips meal={meal} setMeal={setMeal} />}
             <View style={[s.qtyBox, card]}>
@@ -290,7 +577,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
               <Text style={s.sumMacros}>{totals.p}g protein · {totals.c}g carbs · {totals.f}g fat</Text>
             </View>
             <Pressable onPress={save} disabled={q <= 0} style={[s.cta, q <= 0 && { opacity: 0.35 }]} accessibilityRole="button">
-              <Text style={s.ctaText}>{editing ? 'Save' : `Add to ${MEALS.find((m) => m.key === meal)!.label.toLowerCase()}`}</Text>
+              <Text style={s.ctaText}>{editing ? 'Save' : `Add to ${mealLabel.toLowerCase()}`}</Text>
             </Pressable>
             {editing && (
               <Pressable onPress={() => { removeEntry(editing.id); onClose(); }} style={{ alignSelf: 'center', padding: 12 }} accessibilityRole="button">
@@ -320,22 +607,38 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 10 },
   round: { width: 42, height: 42, borderRadius: 21, ...card, alignItems: 'center', justifyContent: 'center' },
   h: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4 },
-  searchRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginTop: 4 },
+  headSub: { fontFamily: f.semi, fontSize: 12.5, color: c.muted, marginTop: 1 },
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
+  tabB: { ...card, flex: 1, borderRadius: 20, paddingVertical: 10, alignItems: 'center' },
+  tabT: { fontFamily: f.bold, fontSize: 13.5, color: c.ink },
+  searchRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginBottom: 8 },
   search: { ...card, flex: 1, borderRadius: 22, paddingHorizontal: 18, height: 52, fontFamily: f.medium, fontSize: 16, color: c.ink },
   scanBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.lime, alignItems: 'center', justifyContent: 'center' },
-  seg: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginVertical: 12 },
-  segB: { ...card, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9 },
-  segT: { fontFamily: f.bold, fontSize: 12.5, color: c.ink },
-  quick: { borderRadius: 20, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  quickT: { fontFamily: f.bold, fontSize: 15, color: c.limeText },
-  sect: { fontFamily: f.extra, fontSize: 16, color: c.ink, marginTop: 18, marginBottom: 6 },
+  quick: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  quickT: { fontFamily: f.bold, fontSize: 14.5, color: c.limeText },
+  sect: { fontFamily: f.extra, fontSize: 16, color: c.ink, marginTop: 18, marginBottom: 2 },
   hint: { fontFamily: f.regular, fontSize: 14.5, color: c.muted, marginTop: 18, lineHeight: 21 },
+  hintS: { fontFamily: f.medium, fontSize: 13, color: c.muted },
   err: { fontFamily: f.medium, fontSize: 14, color: c.red, marginTop: 18, lineHeight: 20 },
   credit: { fontFamily: f.regular, fontSize: 11.5, color: c.soft, marginTop: 20, textAlign: 'center' },
-  res: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.line },
+  res: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.line },
   resName: { fontFamily: f.semi, fontSize: 15, color: c.ink },
   resSub: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 2 },
   resKcal: { fontFamily: f.extra, fontSize: 16, color: c.ink },
+  mineHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 8 },
+  letterHead: { height: HEAD_H, justifyContent: 'flex-end', paddingBottom: 4 },
+  letterHeadT: { fontFamily: f.extra, fontSize: 15, color: c.limeText },
+  bar: { position: 'absolute', right: 0, top: 4, bottom: 8, width: 30, paddingVertical: 2 },
+  barL: { fontFamily: f.bold, fontSize: 10.5, color: c.muted, lineHeight: 13 },
+  bubble: { position: 'absolute', right: 48, top: '40%', width: 64, height: 64, borderRadius: 32, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  bubbleT: { fontFamily: f.extra, fontSize: 28, color: c.lime },
+  mealCard: { borderRadius: 22, padding: 14 },
+  mealDay: { fontFamily: f.extra, fontSize: 16, color: c.ink },
+  copyBtn: { backgroundColor: c.tint, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 9 },
+  copyT: { fontFamily: f.bold, fontSize: 13.5, color: c.limeText },
+  mealItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  mealItemName: { flex: 1, fontFamily: f.medium, fontSize: 13.5, color: c.ink },
+  mealItemKcal: { fontFamily: f.bold, fontSize: 13.5, color: c.muted },
   camWrap: { flex: 1, margin: 20, borderRadius: 28, overflow: 'hidden', backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   frame: { width: 260, height: 150, borderRadius: 20, borderWidth: 3, borderColor: c.lime },
   center: { flex: 1, padding: 30, justifyContent: 'center' },
@@ -344,6 +647,11 @@ const s = StyleSheet.create({
   mchip: { ...card, borderRadius: 20, paddingHorizontal: 13, paddingVertical: 9 },
   mchipText: { fontFamily: f.bold, fontSize: 13, color: c.ink },
   input: { ...card, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, fontFamily: f.medium, fontSize: 15, color: c.ink },
+  fieldL: { fontFamily: f.semi, fontSize: 13.5, color: c.muted, marginRight: 4 },
+  iconPick: { width: 84, borderRadius: 20, paddingVertical: 8, alignItems: 'center' },
+  iconPickT: { fontFamily: f.bold, fontSize: 11.5, color: c.limeText, marginTop: 2 },
+  iconCell: { width: '25%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, borderRadius: 16 },
+  iconCellT: { fontFamily: f.medium, fontSize: 10.5, color: c.muted, textAlign: 'center', marginTop: 3 },
   kcalBox: { ...card, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 8, flexDirection: 'row', alignItems: 'baseline' },
   kcalInput: { flex: 1, fontFamily: f.extra, fontSize: 32, color: c.ink, letterSpacing: -0.8 },
   unit: { fontFamily: f.semi, fontSize: 15, color: c.muted },

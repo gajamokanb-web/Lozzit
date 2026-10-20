@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f } from '../theme';
 import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
+import { MEAL_ICONS } from '../foodIcons';
 import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
 
@@ -42,16 +43,17 @@ function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekD
   );
 }
 
-function MealBlock({ label, entries, open, onToggle, onAdd, onEdit }: { label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
+function MealBlock({ mkey, label, entries, open, onToggle, onAdd, onEdit }: { mkey: MealKey; label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
   const total = sum(entries, 'kcal');
   return (
     <View style={s.block}>
       <Pressable onPress={onToggle} style={s.blockHead} accessibilityRole="button" accessibilityLabel={`${label}, ${open ? 'collapse' : 'expand'}`}>
-        <Icon d={open ? P.chevUp : P.chevDown} size={20} color={c.muted} />
+        <Image source={MEAL_ICONS[mkey]} style={{ width: 38, height: 38 }} />
         <View style={{ flex: 1 }}>
           <Text style={s.blockName}>{label}</Text>
           <Text style={s.blockSub}>{fmt(total)} calories logged</Text>
         </View>
+        <Icon d={open ? P.chevUp : P.chevDown} size={20} color={c.muted} />
       </Pressable>
       {open && (
         <>
@@ -184,6 +186,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
         {MEALS.map((m) => (
           <MealBlock
             key={m.key}
+            mkey={m.key}
             label={m.label}
             entries={entries.filter((e) => e.meal === m.key)}
             open={!closed[m.key]}
