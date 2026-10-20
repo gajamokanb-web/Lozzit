@@ -112,6 +112,7 @@ export const FR: Record<string, string> = {
   'Name (optional)': 'Nom (facultatif)', 'Filter (English names)': 'Filtrer (noms anglais)', 'Copy this meal': 'Copier ce repas', years: 'ans', 'Current weight': 'Poids actuel',
   '(g, optional)': '(g, facultatif)', ', optional)': ', facultatif)', 'g protein ·': 'g de protéines ·', 'g carbs ·': 'g de glucides ·', 'g fat': 'g de lipides',
   'Copy a meal from a previous day into': 'Copie un repas d’un jour précédent dans', 'Delete': 'Supprimer', 'Edit Age': 'Modifier l’âge',
+  'Clear Meal Entry': 'Vider le repas', Factor: 'Facteur', 'Scan It': 'Scanner', 'Meal Summary': 'Résumé du repas', 'Close menu': 'Fermer le menu',
   // misc
   'Tap + to log': 'Appuie sur + pour enregistrer',
 };
@@ -135,7 +136,11 @@ export const FR_PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^Copy into (.+)$/, (m) => `Copier ${IN[m] ?? m}`],
   [/^Open Food Facts is not reachable, and (\S+) is not in your foods yet\.$/, (c) => `Open Food Facts est inaccessible et ${c} n’est pas encore dans tes aliments.`],
   [/^(\S+) is not in your foods or in Open Food Facts\.$/, (c) => `${c} n’est ni dans tes aliments ni dans Open Food Facts.`],
-  [/^Factory · (.*)$/, (l) => `Dupliquer · ${mealFr(l)}`],
+  [/^Factor · (.*)$/, (l) => `Facteur · ${mealFr(l)}`],
+  [/^Copy (.+) to…$/, (l) => `Copier ${mealFr(l)} vers…`],
+  [/^Remove all (\d+) items from (.+)\?$/, (n, l) => `Supprimer les ${n} aliments de « ${mealFr(l)} » ?`],
+  [/^(\d+) items?( · (\d+)% of your daily budget)?$/, (n, _a, pc) => `${n} aliment${+n > 1 ? 's' : ''}${pc ? ` · ${pc}% de ton budget quotidien` : ''}`],
+  [/^Options (.+)$/, (l) => `Options ${mealFr(l)}`],
   [/^(\d+(?:\.\d+)?) servings$/, (n) => `${n} portions`],
   [/^1 portion \((.+)\)$/, (s) => `1 portion (${s})`],
   [/^1 serving \((.+)\)$/, (s) => `1 portion (${s})`],

@@ -13,7 +13,7 @@ import { useStore } from '../store';
 import { card, Icon, P } from '../ui';
 import { FactorModal } from './Factor';
 
-export type AddTarget = { meal: MealKey; day: string; editId?: string };
+export type AddTarget = { meal: MealKey; day: string; editId?: string; scan?: boolean };
 type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev';
 type Tab = 'search' | 'mine' | 'meals';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
@@ -171,7 +171,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       setMode('qty');
     } else {
       setFood(null);
-      setMode('main');
+      if (target.scan) { scanned.current = false; setMode('scan'); } else setMode('main');
     }
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -209,7 +209,8 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     if (query.trim().length < 2) return [];
     const mineHits = searchMine(mine, query).filter((x) => !todayKeys.has(x.key));
     const keys = new Set(mineHits.map((x) => x.key));
-    return [...mineHits, ...searchCiqual(query).filter((x) => !keys.has(x.key) && !todayKeys.has(x.key))];
+    const owned = new Set(mine.map((x) => x.key)); // a food I already saved or edited replaces its table original
+    return [...mineHits, ...searchCiqual(query).filter((x) => !keys.has(x.key) && !owned.has(x.key) && !todayKeys.has(x.key))];
   }, [query, mine, todayKeys]);
 
   const blocks = useMemo(() => {
@@ -228,7 +229,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
   const pick = (fd: Food) => {
     setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
-    setQty(String(fd.portion?.size ?? 100));
+    setQty('100');
     setMode('qty');
   };
 
@@ -375,7 +376,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     if (editKey) {
       // updated values replace the stored food and the one on screen; the quantity stays
       fd.key = editKey;
-      fd.src = food?.src ?? 'custom';
+      fd.src = 'custom'; // edited values are no longer the original table's
       saveFood(fd);
       setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
       setEditKey(null);

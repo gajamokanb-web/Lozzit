@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '../i18n';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text, tr } from '../i18n';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f, onTheme } from '../theme';
 import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, scaleEntry, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
 import { FoodIcon } from '../foodIcons';
 import { FactorModal } from './Factor';
+import { BlockMenu, MealSummary } from './BlockMenu';
+import { Calendar } from './Calendar';
 import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
 
@@ -45,16 +47,20 @@ function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekD
   );
 }
 
-function MealBlock({ label, entries, icons, open, onToggle, onAdd, onFactory, onEdit }: { label: string; entries: Entry[]; icons: Record<string, string | undefined>; open: boolean; onToggle: () => void; onAdd: () => void; onFactory: () => void; onEdit: (id: string) => void }) {
+function MealBlock({ label, entries, icons, open, onToggle, onAdd, onMenu, onEdit }: { label: string; entries: Entry[]; icons: Record<string, string | undefined>; open: boolean; onToggle: () => void; onAdd: () => void; onMenu: (y: number) => void; onEdit: (id: string) => void }) {
+  const dots = React.useRef<View>(null);
   const total = sum(entries, 'kcal');
   return (
     <View style={s.block}>
       <Pressable onPress={onToggle} style={s.blockHead} accessibilityRole="button" accessibilityLabel={`${label}, ${open ? 'collapse' : 'expand'}`}>
+        <Icon d={open ? P.chevDown : P.next} size={20} color={c.muted} />
         <View style={{ flex: 1 }}>
           <Text style={s.blockName}>{label}</Text>
           <Text style={s.blockSub}>{fmt(total)} calories logged</Text>
         </View>
-        <Icon d={open ? P.chevUp : P.chevDown} size={20} color={c.muted} />
+        <Pressable ref={dots} onPress={() => dots.current?.measureInWindow((_x, y, _w, h) => onMenu(y + h))} style={s.dots} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Options ${label}`}>
+          <Icon d={P.more} size={22} color={c.muted} sw={3} />
+        </Pressable>
       </Pressable>
       {open && (
         <>
@@ -74,11 +80,6 @@ function MealBlock({ label, entries, icons, open, onToggle, onAdd, onFactory, on
             );
           })}
           <View style={s.btnRow}>
-            {entries.length > 0 && (
-              <Pressable onPress={onFactory} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Factory ${label}`}>
-                <Text style={s.addText}>Factory</Text>
-              </Pressable>
-            )}
             <Pressable onPress={onAdd} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Add food to ${label}`}>
               <Text style={s.addText}>Add Food</Text>
             </Pressable>
@@ -93,12 +94,16 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   selected: string;
   onSelect: (k: string) => void;
   onOpenCalendar: () => void;
-  onAdd: (meal: MealKey, day: string) => void;
+  onAdd: (meal: MealKey, day: string, scan?: boolean) => void;
   onEdit: (entry: Entry) => void;
   onGoSettings: () => void;
 }) {
-  const { state, setWater, updateEntry } = useStore();
+  const { state, setWater, updateEntry, addEntry, removeEntry } = useStore();
   const [factory, setFactory] = useState<{ label: string; entries: Entry[] } | null>(null);
+  type Blk = { key: MealKey; label: string; entries: Entry[] };
+  const [menu, setMenu] = useState<{ blk: Blk; y: number } | null>(null);
+  const [summary, setSummary] = useState<Blk | null>(null);
+  const [copyBlk, setCopyBlk] = useState<Blk | null>(null);
   const icons = useMemo(() => Object.fromEntries(Object.values(state.foods).map((x) => [x.key, x.icon])), [state.foods]);
   const profile = state.profile!;
   const t = useMemo(() => targets(profile), [profile]);
@@ -110,6 +115,14 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   const maxSteps = steps ? Math.max(1, ...steps) : 1;
 
   const entries = state.entries.filter((e) => e.day === selected);
+  const confirmClear = (b: { label: string; entries: Entry[] }) => {
+    const go = () => b.entries.forEach((e) => removeEntry(e.id));
+    if (Platform.OS === 'web') return go();
+    Alert.alert(tr('Clear Meal Entry'), tr(`Remove all ${b.entries.length} items from ${b.label}?`), [
+      { text: tr('Cancel'), style: 'cancel' },
+      { text: tr('Clear Meal Entry'), style: 'destructive', onPress: go },
+    ]);
+  };
   const eaten = sum(entries, 'kcal');
   const left = t.kcal - eaten;
   const pct = Math.min(eaten / t.kcal, 1);
@@ -220,7 +233,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
             label={m.label}
             icons={icons}
             entries={entries.filter((e) => e.meal === m.key)}
-            onFactory={() => setFactory({ label: m.label, entries: entries.filter((e) => e.meal === m.key) })}
+            onMenu={(y) => setMenu({ blk: { key: m.key, label: m.label, entries: entries.filter((e) => e.meal === m.key) }, y })}
             open={!closed[m.key]}
             onToggle={() => setClosed((x) => ({ ...x, [m.key]: !x[m.key] }))}
             onAdd={() => onAdd(m.key, selected)}
@@ -228,9 +241,32 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
           />
         ))}
       </View>
+      <BlockMenu
+        anchorY={menu ? menu.y : null}
+        onClose={() => setMenu(null)}
+        items={menu ? [
+          { label: 'Clear Meal Entry', icon: P.trash, danger: true, onPress: () => confirmClear(menu.blk) },
+          { label: 'Factor', icon: P.factor, onPress: () => setFactory({ label: menu.blk.label, entries: menu.blk.entries }) },
+          { label: 'Copy', icon: P.copy, onPress: () => setCopyBlk(menu.blk) },
+          { label: 'Scan It', icon: P.scan, onPress: () => onAdd(menu.blk.key, selected, true) },
+          { label: 'Meal Summary', icon: P.stats, onPress: () => setSummary(menu.blk) },
+        ].filter((it) => menu.blk.entries.length > 0 || it.label === 'Scan It') : []}
+      />
+      <MealSummary visible={!!summary} label={summary?.label ?? ''} entries={summary?.entries ?? []} budget={t.kcal} onClose={() => setSummary(null)} />
+      <Calendar
+        visible={!!copyBlk}
+        selected={selected}
+        marks={new Set(state.entries.map((e) => e.day))}
+        title={copyBlk ? `Copy ${copyBlk.label} to…` : undefined}
+        onPick={(k) => {
+          if (copyBlk) { copyBlk.entries.forEach(({ id: _id, ...e }) => addEntry({ ...e, day: k })); onSelect(k); }
+          setCopyBlk(null);
+        }}
+        onClose={() => setCopyBlk(null)}
+      />
       <FactorModal
         visible={!!factory}
-        title={`Factory · ${factory?.label ?? ''}`}
+        title={`Factor · ${factory?.label ?? ''}`}
         confirm="Apply"
         kcal={factory ? sum(factory.entries, 'kcal') : 0}
         onClose={() => setFactory(null)}
@@ -281,6 +317,7 @@ const mkStyles = () => StyleSheet.create({
   drops: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
   block: { ...card, marginHorizontal: 20, borderRadius: 24, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },
+  dots: { width: 32, height: 36, alignItems: 'center', justifyContent: 'center' },
   blockHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   blockName: { fontFamily: f.bold, fontSize: 17, color: c.ink },
   blockSub: { fontFamily: f.medium, fontSize: 13, color: c.muted, marginTop: 2 },

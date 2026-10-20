@@ -53,7 +53,7 @@ function Root() {
     <View key={skin} style={{ flex: 1, backgroundColor: c.page }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       {tab === 'home' && (
-        <Home selected={selected} onSelect={setSelected} onOpenCalendar={() => setCalendar(true)} onAdd={(meal, day) => setAdding({ meal, day })} onEdit={(e) => setAdding({ meal: e.meal, day: e.day, editId: e.id })} onGoSettings={() => setTab('profile')} />
+        <Home selected={selected} onSelect={setSelected} onOpenCalendar={() => setCalendar(true)} onAdd={(meal, day, scan) => setAdding({ meal, day, scan })} onEdit={(e) => setAdding({ meal: e.meal, day: e.day, editId: e.id })} onGoSettings={() => setTab('profile')} />
       )}
       {tab === 'stats' && <Stats onLogWeight={() => openSheet('weight')} />}
       {tab === 'meals' && <Logs onPickDay={(k) => { setSelected(k); setTab('home'); }} />}

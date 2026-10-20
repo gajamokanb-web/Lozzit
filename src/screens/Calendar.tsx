@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '../i18n';
+import { Text, getLang } from '../i18n';
 import { c, f, onTheme } from '../theme';
 import { dayKey, MONTHS, parseKey } from '../domain';
 import { Icon, P } from '../ui';
@@ -8,7 +8,7 @@ import { Icon, P } from '../ui';
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** Month picker. `marks` = day keys that have something logged. */
-export function Calendar({ visible, selected, marks, onPick, onClose }: { visible: boolean; selected: string; marks: Set<string>; onPick: (k: string) => void; onClose: () => void }) {
+export function Calendar({ visible, selected, marks, onPick, onClose, title }: { visible: boolean; selected: string; marks: Set<string>; onPick: (k: string) => void; onClose: () => void; title?: string }) {
   const sel = parseKey(selected);
   const [ym, setYm] = useState({ y: sel.getFullYear(), m: sel.getMonth() });
   useEffect(() => {
@@ -28,13 +28,14 @@ export function Calendar({ visible, selected, marks, onPick, onClose }: { visibl
       <View style={s.wrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close calendar" />
         <View style={s.card}>
+          {title ? <Text style={s.title}>{title}</Text> : null}
           <View style={s.head}>
             <Pressable onPress={() => move(-1)} style={s.arrow} hitSlop={8} accessibilityLabel="Previous month"><Icon d={P.back} size={20} /></Pressable>
             <Text style={s.month}>{MONTHS[ym.m]} {ym.y}</Text>
             <Pressable onPress={() => move(1)} style={s.arrow} hitSlop={8} accessibilityLabel="Next month"><Icon d={P.next} size={20} /></Pressable>
           </View>
           <View style={s.row}>
-            {'MTWTFSS'.split('').map((l, i) => <Text key={i} style={s.wd}>{l}</Text>)}
+            {(getLang() === 'fr' ? 'LMMJVSD' : 'MTWTFSS').split('').map((l, i) => <Text key={i} style={s.wd}>{l}</Text>)}
           </View>
           {Array.from({ length: cells.length / 7 }, (_, r) => (
             <View key={r} style={s.row}>
@@ -63,6 +64,7 @@ export function Calendar({ visible, selected, marks, onPick, onClose }: { visibl
 }
 
 const mkStyles = () => StyleSheet.create({
+  title: { fontFamily: f.extra, fontSize: 17, color: c.ink, textAlign: 'center', marginBottom: 10 },
   wrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.4)', justifyContent: 'center', paddingHorizontal: 20 },
   card: { backgroundColor: c.card, borderRadius: 30, padding: 18 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
