@@ -8,8 +8,13 @@ export type Profile = {
   goalKg: number;
   activity: number; // PAL multiplier
   budget?: number; // daily kcal override (otherwise computed)
-  macros?: { p: number; c: number; f: number }; // daily macro targets in grams (otherwise computed)
+  macros?: { p: number; c: number; f: number }; // legacy: fixed grams
+  method?: MethodKey; // how the budget is computed (default Mifflin–St Jeor)
+  rules?: { p: MacroRule; c: MacroRule; f: MacroRule }; // how each macro target is set
 };
+export type MethodKey = 'mifflin' | 'harris' | 'schofield' | 'owen';
+/** auto: fills what the other macros leave; gkg: grams per kg of body weight; pct: % of daily calories; g: fixed grams. */
+export type MacroRule = { t: 'auto' | 'gkg' | 'pct' | 'g'; v: number };
 export type MealKey = 'breakfast' | 'snack_am' | 'lunch' | 'snack_pm' | 'dinner' | 'snack_eve';
 /** Optional extras, grams: sugar, salt, fibre, saturated fat. */
 export type Extra = { sg?: number; sl?: number; fi?: number; sf?: number };
@@ -99,22 +104,96 @@ export function weekDays(base: Date = new Date()) {
 
 export type Targets = { kcal: number; protein: number; carbs: number; fat: number; sugar: number; salt: number; fiber: number; sat: number };
 
-/** Mifflin–St Jeor × activity, ±adjustment from the goal weight, floor at 1200 kcal. Overrides from the profile win. */
-export function autoBudget(p: Profile) {
-  const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + (p.sex === 'm' ? 5 : -161);
+const fx = (n: number, d = 1) => String(Math.round(n * 10 ** d) / 10 ** d);
+const ageBand = (a: number) => (a < 30 ? 0 : a < 60 ? 1 : 2);
+const MJ = 239.006; // kcal per MJ
+
+/** Ways to estimate resting energy (BMR). Each returns the value and the formula with the person's numbers filled in. */
+export const METHODS: { key: MethodKey; name: string; source: string; calc: (p: Profile) => { bmr: number; text: string } }[] = [
+  {
+    key: 'mifflin', name: 'Mifflin–St Jeor', source: '1990, the most accurate of the common formulas for most adults',
+    calc: (p) => {
+      const m = p.sex === 'm';
+      const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + (m ? 5 : -161);
+      return { bmr, text: `10 × ${p.weightKg} kg + 6.25 × ${p.heightCm} cm − 5 × ${p.age} y ${m ? '+ 5' : '− 161'} = ${fx(bmr, 0)} kcal` };
+    },
+  },
+  {
+    key: 'harris', name: 'Harris–Benedict (revised)', source: 'Roza & Shizgal, 1984; classic formula, tends to read a bit higher',
+    calc: (p) => {
+      const m = p.sex === 'm';
+      const bmr = m ? 88.362 + 13.397 * p.weightKg + 4.799 * p.heightCm - 5.677 * p.age : 447.593 + 9.247 * p.weightKg + 3.098 * p.heightCm - 4.33 * p.age;
+      return { bmr, text: m ? `88.362 + 13.397 × ${p.weightKg} + 4.799 × ${p.heightCm} − 5.677 × ${p.age} = ${fx(bmr, 0)} kcal` : `447.593 + 9.247 × ${p.weightKg} + 3.098 × ${p.heightCm} − 4.330 × ${p.age} = ${fx(bmr, 0)} kcal` };
+    },
+  },
+  {
+    key: 'schofield', name: 'Schofield (FAO/WHO)', source: '1985, used by WHO; uses weight and age band only',
+    calc: (p) => {
+      const m = p.sex === 'm';
+      const b = ageBand(p.age);
+      const [a, c0] = (m ? [[0.063, 2.896], [0.048, 3.653], [0.049, 2.459]] : [[0.062, 2.036], [0.034, 3.538], [0.038, 2.755]])[b];
+      const mj = a * p.weightKg + c0;
+      const bmr = mj * MJ;
+      return { bmr, text: `(${a} × ${p.weightKg} kg + ${c0}) MJ = ${fx(mj, 2)} MJ × 239 = ${fx(bmr, 0)} kcal (${['under 30', '30–59', '60+'][b]} years)` };
+    },
+  },
+  {
+    key: 'owen', name: 'Owen', source: '1986–87; weight only, simple',
+    calc: (p) => {
+      const m = p.sex === 'm';
+      const bmr = m ? 879 + 10.2 * p.weightKg : 795 + 7.18 * p.weightKg;
+      return { bmr, text: `${m ? '879 + 10.2' : '795 + 7.18'} × ${p.weightKg} kg = ${fx(bmr, 0)} kcal` };
+    },
+  },
+];
+export const methodOf = (p: Profile) => METHODS.find((m) => m.key === (p.method ?? 'mifflin')) ?? METHODS[0];
+
+/** Goal adjustment: −500 kcal to lose, +300 to gain, none within ±0.5 kg of the goal. */
+export function goalAdjust(p: Profile) {
   const delta = p.goalKg - p.weightKg;
-  const adj = delta < -0.5 ? -500 : delta > 0.5 ? 300 : 0;
-  return Math.max(1200, Math.round((bmr * p.activity + adj) / 10) * 10);
+  return delta < -0.5 ? { adj: -500, why: `goal ${p.goalKg} kg is below your weight → −500 kcal to lose about 0.5 kg a week` } : delta > 0.5 ? { adj: 300, why: `goal ${p.goalKg} kg is above your weight → +300 kcal to gain slowly` } : { adj: 0, why: 'you are at your goal weight → no adjustment' };
 }
+/** Step by step budget for a method (floor 1200 kcal, rounded to 10). */
+export function budgetFor(p: Profile, key: MethodKey = p.method ?? 'mifflin') {
+  const m = METHODS.find((x) => x.key === key)!;
+  const { bmr, text } = m.calc(p);
+  const tdee = bmr * p.activity;
+  const { adj, why } = goalAdjust(p);
+  const raw = tdee + adj;
+  const kcal = Math.max(1200, Math.round(raw / 10) * 10);
+  return { method: m, bmr, text, tdee, adj, why, raw, kcal, floored: raw < 1200 };
+}
+export const autoBudget = (p: Profile) => budgetFor(p, p.method ?? 'mifflin').kcal;
 export function autoMacros(p: Profile, kcal: number) {
   const protein = Math.round(1.6 * p.weightKg);
   const fat = Math.round((kcal * 0.25) / 9);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return { p: protein, c: carbs, f: fat };
 }
+const KCAL_PER_G = { p: 4, c: 4, f: 9 } as const;
+/** Grams for each macro: fixed rules first, then the "auto" ones share the calories that are left. */
+export function resolveMacros(p: Profile, kcal: number, rules: NonNullable<Profile['rules']>) {
+  const d = autoMacros(p, kcal);
+  const out = { ...d };
+  let used = 0;
+  const autos: ('p' | 'c' | 'f')[] = [];
+  for (const k of ['p', 'c', 'f'] as const) {
+    const r = rules[k];
+    if (r.t === 'auto') { autos.push(k); continue; }
+    out[k] = Math.round(r.t === 'g' ? r.v : r.t === 'gkg' ? r.v * p.weightKg : (r.v / 100) * kcal / KCAL_PER_G[k]);
+    used += out[k] * KCAL_PER_G[k];
+  }
+  if (autos.length) {
+    const left = Math.max(0, kcal - used);
+    const w = autos.reduce((a, k) => a + d[k] * KCAL_PER_G[k], 0) || 1;
+    for (const k of autos) out[k] = Math.round((left * ((d[k] * KCAL_PER_G[k]) / w)) / KCAL_PER_G[k]);
+  }
+  return out;
+}
+
 export function targets(p: Profile): Targets {
   const kcal = p.budget ?? autoBudget(p);
-  const m = p.macros ?? autoMacros(p, kcal);
+  const m = p.rules ? resolveMacros(p, kcal, p.rules) : p.macros ?? autoMacros(p, kcal);
   return {
     kcal, protein: m.p, carbs: m.c, fat: m.f,
     sugar: Math.round((kcal * 0.1) / 4), // WHO: free sugars under 10 % of energy

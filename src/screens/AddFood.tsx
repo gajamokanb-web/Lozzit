@@ -5,13 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from '../theme';
 import { entryBase, EXTRAS, fmt, fmtDay, MEALS, scale, scaleEntry, sum, type Base, type Entry, type MealKey, type Per } from '../domain';
 import { letterOf, lookupBarcode, searchCiqual, searchMine, sortKey, type Food } from '../foods';
+import { readLabel, DEFAULT_MODEL } from '../vision';
 import { FOOD_ICON_LIST, FoodIcon, suggestIcon } from '../foodIcons';
 import { useStore } from '../store';
 import { card, Icon, P } from '../ui';
 import { FactorModal } from './Factor';
 
 export type AddTarget = { meal: MealKey; day: string; editId?: string };
-type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons';
+type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label';
 type Tab = 'search' | 'mine' | 'meals';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
@@ -145,6 +146,11 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [iconQ, setIconQ] = useState('');
   const [createFrom, setCreateFrom] = useState<Mode>('main');
   const scanned = useRef(false);
+  const cam = useRef<CameraView>(null);
+  const [torch, setTorch] = useState(false);
+  const [labelBusy, setLabelBusy] = useState(false);
+  const [labelMsg, setLabelMsg] = useState('');
+  useEffect(() => { if (mode !== 'scan' && mode !== 'label') setTorch(false); }, [mode]);
 
   const editing = target?.editId ? state.entries.find((e) => e.id === target.editId) : undefined;
 
@@ -275,9 +281,36 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     onClose();
   };
 
+  const openLabel = async () => {
+    setLabelMsg('');
+    if (!state.settings.geminiKey.trim()) return setLabelMsg('Add your Google AI Studio API key first: Profile → AI label scan.');
+    if (!perm?.granted) { const r = await askPerm(); if (!r.granted) return setLabelMsg('Camera permission is needed to photograph the label.'); }
+    setMode('label');
+  };
+  const snapLabel = async () => {
+    if (labelBusy || !cam.current) return;
+    setLabelBusy(true); setLabelMsg('');
+    try {
+      const pic = await cam.current.takePictureAsync({ quality: 0.6, base64: true, skipProcessing: true });
+      if (!pic?.base64) throw new Error('The photo could not be taken. Try again.');
+      const r = await readLabel(pic.base64, state.settings.geminiKey.trim(), state.settings.geminiModel.trim() || DEFAULT_MODEL);
+      setNUnit('g');
+      setNKcal(String(r.per.kcal)); setNP(String(r.per.p)); setNC(String(r.per.c)); setNF(String(r.per.f));
+      setNX(EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')));
+      if (r.servingG) setNPortion(String(r.servingG));
+      if (r.name && !nName.trim()) { setNName(r.name); if (!nIconTouched) setNIcon(suggestIcon(r.name)); }
+      setLabelMsg(r.note ?? 'Values read from the label: check them before saving.');
+      setMode('create');
+    } catch (e) {
+      setLabelMsg(e instanceof Error ? e.message : 'The label could not be read.');
+    } finally {
+      setLabelBusy(false);
+    }
+  };
+
   const openCreate = (from: Mode, preset?: { name?: string; code?: string }) => {
     const name = preset?.name ?? '';
-    setEditKey(null); setNX(['', '', '', '']);
+    setEditKey(null); setNX(['', '', '', '']); setLabelMsg('');
     setNName(name); setNBrand(''); setNUnit('g'); setNKcal(''); setNP(''); setNC(''); setNF(''); setNPortion('');
     setNCode(preset?.code ?? ''); setNIcon(suggestIcon(name)); setNIconTouched(false); setCreateFrom(from);
     setMode('create');
@@ -325,10 +358,10 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     pick(fd);
   };
 
-  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo' }[mode];
+  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label' }[mode];
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
-    if (mode === 'icons') return setMode('create');
+    if (mode === 'icons' || mode === 'label') return setMode('create');
     if (mode === 'create') return setMode(createFrom);
     setMode('main');
   };
@@ -459,7 +492,9 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                   facing="back"
                   barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'] }}
                   onBarcodeScanned={miss ? undefined : onScan}
+                  enableTorch={torch}
                 />
+                <TorchBtn on={torch} toggle={() => setTorch((x) => !x)} />
                 <View style={s.frame} pointerEvents="none" />
                 {busy && <ActivityIndicator color="#fff" size="large" style={StyleSheet.absoluteFill} />}
               </View>
@@ -514,6 +549,16 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
         {mode === 'create' && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
+            {!editKey && (
+              <Pressable onPress={openLabel} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Scan nutrition label">
+                <Icon d={P.camera} size={20} color={c.limeText} sw={2.2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.quickT}>Scan the nutrition label</Text>
+                  <Text style={s.resSub}>Photo read by Google Gemini (your API key)</Text>
+                </View>
+              </Pressable>
+            )}
+            {labelMsg ? <Text style={[s.hintS, { color: /^Values|^Only/.test(labelMsg) ? c.limeText : c.red }]}>{labelMsg}</Text> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Pressable onPress={() => { setIconQ(''); setMode('icons'); }} style={[s.iconPick, card]} accessibilityRole="button" accessibilityLabel="Choose a logo">
                 <FoodIcon name={nName} icon={nIcon} size={52} />
@@ -571,6 +616,24 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
             </View>
             <Pressable onPress={createFood} disabled={!createOk} style={[s.cta, !createOk && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.ctaText}>{editKey ? 'Save changes' : 'Save food'}</Text></Pressable>
           </ScrollView>
+        )}
+
+        {mode === 'label' && (
+          <View style={{ flex: 1 }}>
+            <View style={s.camWrap}>
+              <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back" enableTorch={torch} />
+              <View style={s.labelFrame} pointerEvents="none" />
+              <TorchBtn on={torch} toggle={() => setTorch((x) => !x)} />
+              {labelBusy && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', gap: 12 }]}>
+                  <ActivityIndicator color="#fff" size="large" />
+                  <Text style={{ fontFamily: f.bold, color: '#fff' }}>Reading the label…</Text>
+                </View>
+              )}
+            </View>
+            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Fit the whole nutrition table in the frame, then take the photo. The photo is sent to Google and not kept.</Text>}
+            <Pressable onPress={snapLabel} disabled={labelBusy} style={[s.shutter, { marginBottom: Math.max(bottom, 12) + 8 }, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Take photo"><View style={s.shutterIn} /></Pressable>
+          </View>
         )}
 
         {mode === 'icons' && (
@@ -652,6 +715,14 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   );
 }
 
+function TorchBtn({ on, toggle }: { on: boolean; toggle: () => void }) {
+  return (
+    <Pressable onPress={toggle} style={[s.torch, on && { backgroundColor: c.lime }]} hitSlop={8} accessibilityRole="button" accessibilityLabel={on ? 'Turn flashlight off' : 'Turn flashlight on'}>
+      <Icon d={P.zap} size={22} color={on ? c.ink : '#fff'} fill={on ? c.ink : 'none'} sw={2.2} />
+    </Pressable>
+  );
+}
+
 function MealChips({ meal, setMeal }: { meal: MealKey; setMeal: (m: MealKey) => void }) {
   const { state } = useStore();
   return (
@@ -710,6 +781,11 @@ const s = StyleSheet.create({
   mchipText: { fontFamily: f.bold, fontSize: 13, color: c.ink },
   input: { ...card, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, fontFamily: f.medium, fontSize: 15, color: c.ink },
   fieldL: { fontFamily: f.semi, fontSize: 13.5, color: c.muted, marginRight: 4 },
+  torch: { position: 'absolute', top: 14, right: 14, width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  labelBtn: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  labelFrame: { width: '86%', height: '70%', borderRadius: 20, borderWidth: 3, borderColor: c.lime },
+  shutter: { alignSelf: 'center', width: 74, height: 74, borderRadius: 37, borderWidth: 4, borderColor: c.ink, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  shutterIn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.lime },
   pencil: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.tint, alignItems: 'center', justifyContent: 'center' },
   iconPick: { width: 84, borderRadius: 20, paddingVertical: 8, alignItems: 'center' },
   iconPickT: { fontFamily: f.bold, fontSize: 11.5, color: c.limeText, marginTop: 2 },

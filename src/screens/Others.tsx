@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { c, f } from '../theme';
-import { ACTIVITY, autoBudget, autoMacros, dayKey, fmt, fmtDay, MEALS, targets } from '../domain';
+import { ACTIVITY, autoBudget, autoMacros, budgetFor, dayKey, fmt, fmtDay, MEALS, METHODS, resolveMacros, targets, type MacroRule } from '../domain';
 import { useStore } from '../store';
 import { card, Icon, P, Screen, Title } from '../ui';
 import { enableSteps, listStepSources, sourceName } from '../steps';
@@ -68,27 +68,43 @@ export function Profile() {
   type EditKey = 'age' | 'height' | 'weight' | 'goal' | 'activity' | 'budget' | 'macros' | 'stepGoal';
   const [edit, setEdit] = useState<EditKey | null>(null);
   const [vals, setVals] = useState<string[]>([]);
+  type RS = { t: MacroRule['t']; v: string };
+  const [rl, setRl] = useState<RS[]>([]);
   const st = state.settings;
   const initial = (k: EditKey): string[] =>
-    ({ age: [p.age], height: [p.heightCm], weight: [p.weightKg], goal: [p.goalKg], activity: [], budget: [t.kcal], macros: [t.protein, t.carbs, t.fat], stepGoal: [st.stepGoal] }[k].map(String));
-  const open = (k: EditKey) => { setVals(initial(k)); setEdit(k); };
+    ({ age: [p.age], height: [p.heightCm], weight: [p.weightKg], goal: [p.goalKg], activity: [], budget: [''], macros: [t.protein, t.carbs, t.fat], stepGoal: [st.stepGoal] }[k].map(String));
+  const open = (k: EditKey) => {
+    setVals(initial(k));
+    if (k === 'macros') {
+      const ks = ['p', 'c', 'f'] as const;
+      setRl(ks.map((x, i) => (p.rules ? { t: p.rules[x].t, v: String(p.rules[x].v) } : p.macros ? { t: 'g' as const, v: String([t.protein, t.carbs, t.fat][i]) } : { t: 'auto' as const, v: '' })));
+    }
+    setEdit(k);
+  };
+  const rulesOf = (): NonNullable<typeof p.rules> => {
+    const f = (r: RS): MacroRule => ({ t: r.t, v: r.t === 'auto' ? 0 : parseFloat(r.v.replace(',', '.')) });
+    return { p: f(rl[0]), c: f(rl[1]), f: f(rl[2]) };
+  };
+  const AUTO_RULES: NonNullable<typeof p.rules> = { p: { t: 'auto', v: 0 }, c: { t: 'auto', v: 0 }, f: { t: 'auto', v: 0 } };
+  const rulesOk = rl.length === 3 && rl.every((r) => r.t === 'auto' || (Number.isFinite(parseFloat(r.v.replace(',', '.'))) && parseFloat(r.v.replace(',', '.')) >= 0));
   const n = (i: number) => parseFloat((vals[i] ?? '').replace(',', '.'));
   const RANGE: Partial<Record<EditKey, [number, number]>> = { age: [10, 100], height: [100, 250], weight: [30, 300], goal: [30, 300], budget: [800, 6000], stepGoal: [1000, 50000] };
-  const valid = !edit ? false : edit === 'macros' ? [0, 1, 2].every((i) => n(i) >= 0 && n(i) < 2000) : edit === 'activity' ? true : n(0) >= RANGE[edit]![0] && n(0) <= RANGE[edit]![1];
+  const valid = !edit ? false : edit === 'macros' ? rulesOk : edit === 'activity' || (edit === 'budget' && !vals[0]) ? true : n(0) >= RANGE[edit]![0] && n(0) <= RANGE[edit]![1];
   const commit = () => {
     if (!edit || !valid) return;
+    if (edit === 'budget' && !vals[0]) return setEdit(null);
     if (edit === 'age') setProfile({ ...p, age: Math.round(n(0)) });
     if (edit === 'height') setProfile({ ...p, heightCm: Math.round(n(0)) });
     if (edit === 'weight') setWeight(dayKey(), Math.round(n(0) * 10) / 10);
     if (edit === 'goal') setProfile({ ...p, goalKg: Math.round(n(0) * 10) / 10 });
     if (edit === 'budget') setProfile({ ...p, budget: Math.round(n(0)) });
-    if (edit === 'macros') setProfile({ ...p, macros: { p: Math.round(n(0)), c: Math.round(n(1)), f: Math.round(n(2)) } });
+    if (edit === 'macros') setProfile({ ...p, macros: undefined, rules: rl.every((r) => r.t === 'auto') ? undefined : rulesOf() });
     if (edit === 'stepGoal') setSettings({ stepGoal: Math.round(n(0)) });
     setEdit(null);
   };
   const auto = () => {
     if (edit === 'budget') setProfile({ ...p, budget: undefined });
-    if (edit === 'macros') setProfile({ ...p, macros: undefined });
+    if (edit === 'macros') setProfile({ ...p, macros: undefined, rules: undefined });
     setEdit(null);
   };
   const rows: [EditKey, string, string][] = [
@@ -97,8 +113,8 @@ export function Profile() {
     ['weight', 'Weight', `${p.weightKg} kg`],
     ['goal', 'Goal weight', `${p.goalKg} kg`],
     ['activity', 'Activity', act],
-    ['budget', 'Daily budget', `${fmt(t.kcal)} kcal${p.budget == null ? ' · auto' : ''}`],
-    ['macros', 'Macro targets', `${t.protein}P · ${t.carbs}C · ${t.fat}F${p.macros ? '' : ' · auto'}`],
+    ['budget', 'Daily budget', `${fmt(t.kcal)} kcal${p.budget == null ? ' · ' + budgetFor(p).method.name.split(' ')[0] : ' · custom'}`],
+    ['macros', 'Macro targets', `${t.protein}P · ${t.carbs}C · ${t.fat}F${p.macros || p.rules ? '' : ' · auto'}`],
   ];
   const TITLES: Record<EditKey, string> = { age: 'Age', height: 'Height (cm)', weight: 'Weight (kg)', goal: 'Goal weight (kg)', activity: 'Activity', budget: 'Daily budget (kcal)', macros: 'Macro targets (g)', stepGoal: 'Daily step goal' };
   const toggleMeal = (k: (typeof MEALS)[number]['key']) => {
@@ -154,6 +170,17 @@ export function Profile() {
           </Pressable>
         )}
       </View>
+      <Text style={s.sect}>AI label scan</Text>
+      <View style={[s.list, card]}>
+        <Text style={[s.liS, { paddingTop: 14 }]}>Photograph a nutrition table when you create a food: Google Gemini reads carbs, sugar, protein, fat, saturated fat, salt and fiber. Get a free key on aistudio.google.com/apikey. The key stays on this phone; each photo is sent to Google.</Text>
+        <View style={{ paddingVertical: 12, gap: 8 }}>
+          <Text style={s.fieldL}>API key</Text>
+          <TextInput style={s.keyIn} value={st.geminiKey} onChangeText={(x) => setSettings({ geminiKey: x.trim() })} placeholder="AIza…" placeholderTextColor={c.soft} secureTextEntry autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Gemini API key" />
+          <Text style={s.fieldL}>Model</Text>
+          <TextInput style={s.keyIn} value={st.geminiModel} onChangeText={(x) => setSettings({ geminiModel: x.trim() })} placeholder="gemini-flash-latest" placeholderTextColor={c.soft} autoCapitalize="none" autoCorrect={false} selectionColor={c.lime} accessibilityLabel="Gemini model" />
+          <Pressable onPress={() => Linking.openURL('https://aistudio.google.com/apikey')} accessibilityRole="link"><Text style={s.link}>Get a free API key</Text></Pressable>
+        </View>
+      </View>
       <Text style={s.sect}>Meals</Text>
       <View style={[s.list, card]}>
         <Text style={[s.liS, { paddingTop: 14 }]}>Choose the meals you use. A meal you turn off disappears from the dashboard, but stays visible on days where it already has food.</Text>
@@ -181,22 +208,73 @@ export function Profile() {
                   </Pressable>
                 ))
               ) : edit === 'macros' ? (
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {['Protein', 'Carbs', 'Fat'].map((l, i) => (
-                    <View key={l} style={s.fieldBox}>
-                      <Text style={s.fieldL}>{l}</Text>
-                      <TextInput style={s.field} value={vals[i]} onChangeText={(x) => setVals((v) => v.map((y, j) => (j === i ? x : y)))} keyboardType="number-pad" maxLength={4} selectTextOnFocus selectionColor={c.lime} accessibilityLabel={l} />
-                    </View>
-                  ))}
+                <View style={{ gap: 12 }}>
+                  <Text style={s.liS}>Fix the macros you care about. “Auto” ones share the calories that are left, in proportion to the default split.</Text>
+                  {(['Protein', 'Carbs', 'Fat'] as const).map((l, i) => {
+                    const res = resolveMacros(p, t.kcal, rulesOk ? rulesOf() : AUTO_RULES);
+                    const g = [res.p, res.c, res.f][i];
+                    return (
+                      <View key={l}>
+                        <View style={s.mRowH}>
+                          <Text style={s.liT}>{l}</Text>
+                          <Text style={s.liV}>{g} g · {fmt(g * [4, 4, 9][i])} kcal</Text>
+                        </View>
+                        <View style={s.chipsRow}>
+                          {([['auto', 'Auto'], ['gkg', 'g / kg'], ['pct', '% kcal'], ['g', 'grams']] as const).map(([tt, lab]) => (
+                            <Pressable key={tt} onPress={() => setRl((r) => r.map((x, j) => (j === i ? { t: tt, v: x.t === tt ? x.v : tt === 'gkg' ? String(Math.round((g / p.weightKg) * 10) / 10) : tt === 'pct' ? String(Math.round((g * [4, 4, 9][i] * 100) / t.kcal)) : tt === 'g' ? String(g) : '' } : x)))} style={[s.opt, rl[i]?.t === tt && { backgroundColor: c.ink }]} accessibilityRole="button" accessibilityLabel={`${l} ${lab}`}>
+                              <Text style={[s.optT, rl[i]?.t === tt && { color: c.lime }]}>{lab}</Text>
+                            </Pressable>
+                          ))}
+                          {rl[i] && rl[i].t !== 'auto' && (
+                            <TextInput style={s.optIn} value={rl[i].v} onChangeText={(x) => setRl((r) => r.map((y, j) => (j === i ? { ...y, v: x } : y)))} keyboardType="decimal-pad" maxLength={5} selectTextOnFocus selectionColor={c.lime} accessibilityLabel={`${l} value`} />
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                  {(() => {
+                    const res = resolveMacros(p, t.kcal, rulesOk ? rulesOf() : AUTO_RULES);
+                    const total = res.p * 4 + res.c * 4 + res.f * 9;
+                    return <Text style={[s.liS, Math.abs(total - t.kcal) > t.kcal * 0.03 && { color: c.orange }]}>Total {fmt(total)} kcal for a {fmt(t.kcal)} kcal budget{total > t.kcal * 1.03 ? ': your fixed macros are above the budget.' : total < t.kcal * 0.97 ? ': every macro is fixed, the rest is unassigned.' : '.'}</Text>;
+                  })()}
                 </View>
+              ) : edit === 'budget' ? (
+                <ScrollView style={{ maxHeight: 540 }} contentContainerStyle={{ gap: 6 }} keyboardShouldPersistTaps="handled">
+                  <Text style={s.liS}>Pick how your resting energy is estimated. Then activity and your goal are applied the same way.</Text>
+                  {METHODS.map((m) => {
+                    const b = budgetFor(p, m.key);
+                    const on = !p.budget && budgetFor(p).method.key === m.key;
+                    return (
+                      <Pressable key={m.key} onPress={() => { setProfile({ ...p, method: m.key, budget: undefined }); }} style={[s.method, on && { borderColor: c.ink }]} accessibilityRole="button" accessibilityLabel={m.name}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.liT}>{m.name}</Text>
+                          <Text style={s.liS}>{m.source}</Text>
+                        </View>
+                        <Text style={s.methodV}>{fmt(b.kcal)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  {(() => {
+                    const b = budgetFor(p);
+                    return (
+                      <View style={s.detail}>
+                        <Text style={s.detailH}>{b.method.name}{p.budget ? ' (custom budget set below)' : ''}</Text>
+                        <Text style={s.detailL}>1. Resting energy: {b.text}</Text>
+                        <Text style={s.detailL}>2. × activity {p.activity} ({ACTIVITY.find((a) => a.v === p.activity)?.label ?? 'custom'}) = {fmt(b.tdee)} kcal to maintain your weight</Text>
+                        <Text style={s.detailL}>3. Goal: {b.why}</Text>
+                        <Text style={s.detailL}>4. {fmt(b.tdee)} {b.adj >= 0 ? '+' : '−'} {Math.abs(b.adj)} = {fmt(b.raw)} → rounded to {fmt(b.kcal)} kcal{b.floored ? ' (never below 1,200)' : ''}</Text>
+                      </View>
+                    );
+                  })()}
+                  <Text style={[s.liT, { marginTop: 8 }]}>Or set your own</Text>
+                  <TextInput style={[s.field, s.fieldBig]} value={vals[0]} onChangeText={(x) => setVals([x])} placeholder={String(t.kcal)} placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectTextOnFocus selectionColor={c.lime} accessibilityLabel="Daily budget (kcal)" />
+                </ScrollView>
               ) : (
                 <TextInput style={[s.field, s.fieldBig]} value={vals[0]} onChangeText={(x) => setVals([x])} keyboardType="decimal-pad" maxLength={6} selectTextOnFocus selectionColor={c.lime} autoFocus accessibilityLabel={TITLES[edit]} />
               )}
-              {edit === 'budget' && <Text style={s.liS}>Auto = {fmt(autoBudget(p))} kcal, from your weight, height, age, activity and goal.</Text>}
-              {edit === 'macros' && <Text style={s.liS}>Auto = {autoMacros(p, t.kcal).p}P · {autoMacros(p, t.kcal).c}C · {autoMacros(p, t.kcal).f}F for your budget.</Text>}
               {edit !== 'activity' && (
                 <>
-                  <Pressable onPress={commit} disabled={!valid} style={[s.save, !valid && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.saveT}>Save</Text></Pressable>
+                  <Pressable onPress={commit} disabled={!valid} style={[s.save, !valid && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.saveT}>{edit === 'budget' ? (vals[0] ? 'Save custom budget' : 'Done') : 'Save'}</Text></Pressable>
                   {(edit === 'budget' || edit === 'macros') && (
                     <Pressable onPress={auto} style={{ alignSelf: 'center', padding: 8 }} accessibilityRole="button"><Text style={s.link}>Use auto</Text></Pressable>
                   )}
@@ -279,6 +357,17 @@ const s = StyleSheet.create({
   save: { height: 54, borderRadius: 27, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   saveT: { fontFamily: f.bold, fontSize: 16, color: c.lime },
   link: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
+  mRowH: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
+  opt: { backgroundColor: c.page, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
+  optT: { fontFamily: f.bold, fontSize: 12.5, color: c.ink },
+  optIn: { minWidth: 64, backgroundColor: c.page, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, fontFamily: f.extra, fontSize: 15, color: c.ink },
+  method: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 2, borderColor: c.line, borderRadius: 18, padding: 12 },
+  methodV: { fontFamily: f.extra, fontSize: 17, color: c.ink },
+  detail: { backgroundColor: c.page, borderRadius: 18, padding: 14, gap: 6, marginTop: 4 },
+  detailH: { fontFamily: f.extra, fontSize: 14, color: c.ink },
+  detailL: { fontFamily: f.regular, fontSize: 12.5, color: c.ink, lineHeight: 18 },
+  keyIn: { backgroundColor: c.page, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, fontFamily: f.medium, fontSize: 14.5, color: c.ink },
   reset: { alignSelf: 'center', marginTop: 24, paddingVertical: 12, paddingHorizontal: 18 },
   resetText: { fontFamily: f.bold, fontSize: 14, color: c.red },
 });

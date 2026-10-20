@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Entry, MealKey, Profile } from './domain';
 import type { Food } from './foods';
 
-type Settings = { fit: boolean; stepSource: string; meals: MealKey[]; showSugar: boolean; showSalt: boolean; showFiber: boolean; showSat: boolean; stepGoal: number }; // stepSource: 'all' or a Health Connect package name
+type Settings = { fit: boolean; stepSource: string; meals: MealKey[]; showSugar: boolean; showSalt: boolean; showFiber: boolean; showSat: boolean; stepGoal: number; geminiKey: string; geminiModel: string }; // stepSource: 'all' or a Health Connect package name
 type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; weights: Record<string, number>; foods: Record<string, Food>; settings: Settings };
-const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000 } };
+const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000, geminiKey: '', geminiModel: 'gemini-flash-latest' } };
 const KEY = 'lozzit:v1';
 
 type Store = {
