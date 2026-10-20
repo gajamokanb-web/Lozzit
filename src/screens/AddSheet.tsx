@@ -1,24 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from '../theme';
 import { MEALS, type MealKey } from '../domain';
-import { MEAL_ICONS } from '../foodIcons';
 import { useStore } from '../store';
-import { Icon, P } from '../ui';
+import { Disc, Icon, MealIcon, P } from '../ui';
 
-type View_ = 'grid' | 'water' | 'weight';
+export type SheetView = 'grid' | 'water' | 'weight';
+type View_ = SheetView;
 
 /** The "+" menu: pick a meal to add food to, or log water or body weight (Lose It-style). */
-export function AddSheet({ visible, day, suggested, onClose, onMeal }: { visible: boolean; day: string; suggested: MealKey; onClose: () => void; onMeal: (m: MealKey) => void }) {
+export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onMeal }: { visible: boolean; start?: SheetView; day: string; suggested: MealKey; onClose: () => void; onMeal: (m: MealKey) => void }) {
   const { state, setWater, setWeight } = useStore();
   const { bottom } = useSafeAreaInsets();
   const [view, setView] = useState<View_>('grid');
   const [kg, setKg] = useState('');
 
+  // slide up from the bottom, fade the backdrop; reverse on close
+  const [show, setShow] = useState(false);
+  const y = useRef(new Animated.Value(520)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) {
+      setShow(true);
+      y.setValue(520); fade.setValue(0);
+      Animated.parallel([
+        Animated.timing(y, { toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ]).start();
+    } else if (show) {
+      Animated.parallel([
+        Animated.timing(y, { toValue: 520, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start(() => setShow(false));
+    }
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!visible) return;
-    setView('grid');
+    setView(start);
     const last = Object.keys(state.weights).sort().pop();
     setKg(String(state.weights[day] ?? (last ? state.weights[last] : state.profile?.weightKg ?? '')));
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -35,22 +55,24 @@ export function AddSheet({ visible, day, suggested, onClose, onMeal }: { visible
   );
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={show} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={s.backdrop} onPress={onClose} accessibilityLabel="Close" />
-        <View style={[s.sheet, { paddingBottom: Math.max(bottom, 12) + 14 }]}>
+        <Animated.View style={[s.backdrop, { opacity: fade }]}>
+          <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Close" />
+        </Animated.View>
+        <Animated.View style={[s.sheet, { paddingBottom: Math.max(bottom, 12) + 14, transform: [{ translateY: y }] }]}>
           {view === 'grid' && (
             <View style={s.grid}>
-              {MEALS.map((m) => (
+              {MEALS.filter((m) => state.settings.meals.includes(m.key)).map((m) => (
                 <Tile key={m.key} label={m.label} on={m.key === suggested} onPress={() => onMeal(m.key)}>
-                  <Image source={MEAL_ICONS[m.key]} style={s.mealImg} />
+                  <MealIcon k={m.key} size={58} />
                 </Tile>
               ))}
               <Tile label="Water" onPress={() => setView('water')}>
-                <View style={[s.fillDisc, { backgroundColor: c.blue }]}><Icon d={P.drop} size={32} color="#fff" fill="#fff" sw={0} /></View>
+                <Disc d={P.drop} bg={c.blue} size={58} fill="#fff" sw={0} />
               </Tile>
               <Tile label="Weight" onPress={() => setView('weight')}>
-                <View style={[s.fillDisc, { backgroundColor: c.orange }]}><Icon d={P.weight} size={34} color="#fff" sw={2.2} /></View>
+                <Disc d={P.weight} bg={c.ink} size={58} sw={2.2} />
               </Tile>
             </View>
           )}
@@ -82,7 +104,7 @@ export function AddSheet({ visible, day, suggested, onClose, onMeal }: { visible
               <Pressable onPress={() => setView('grid')} style={s.linkW}><Text style={s.link}>Back</Text></Pressable>
             </View>
           )}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );

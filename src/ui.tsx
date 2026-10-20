@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from './theme';
+import type { MealKey } from './domain';
 
 export const P = {
   bell: ['M10.268 21a2 2 0 0 0 3.464 0', 'M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326'],
@@ -21,6 +22,12 @@ export const P = {
   chevDown: ['m6 9 6 6 6-6'],
   chevUp: ['m18 15-6-6-6 6'],
   minus: ['M5 12h14'],
+  coffee: ['M10 2v2', 'M14 2v2', 'M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1', 'M6 2v2'],
+  apple: ['M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z', 'M10 2c1 .5 2 2 2 5'],
+  cookie: ['M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5', 'M8.5 8.5v.01', 'M16 15.5v.01', 'M12 12v.01', 'M11 17v.01', 'M7 14v.01'],
+  moonStar: ['M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9', 'M20 3v4', 'M22 5h-4'],
+  popcorn: ['M18 8a2 2 0 0 0 0-4 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0 0 4', 'M10 22 9 8', 'm14 22 1-14', 'M20 8c.5 0 .9.4.8 1l-2.6 12c-.1.5-.7 1-1.2 1H7c-.6 0-1.1-.4-1.2-1L3.2 9c-.1-.6.3-1 .8-1Z'],
+  edit: ['M12 20h9', 'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z'],
   weight: ['M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.48 8Z'],
 };
 
@@ -31,6 +38,24 @@ export function Icon({ d, size = 24, color = c.ink, fill = 'none', sw = 2 }: { d
     </Svg>
   );
 }
+
+/** Round colour badge + glyph used for meals, water and weight. */
+export function Disc({ d, bg, size = 44, fill = 'none', sw = 2 }: { d: string[]; bg: string; size?: number; fill?: string; sw?: number }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Icon d={d} size={size * 0.52} color="#fff" fill={fill} sw={sw} />
+    </View>
+  );
+}
+export const MEAL_STYLE: Record<MealKey, { d: string[]; bg: string }> = {
+  breakfast: { d: P.coffee, bg: '#FF9F43' },
+  snack_am: { d: P.apple, bg: '#7DC242' },
+  lunch: { d: P.meals, bg: '#22B5A3' },
+  snack_pm: { d: P.cookie, bg: '#F2688A' },
+  dinner: { d: P.moonStar, bg: '#5B5BD6' },
+  snack_eve: { d: P.popcorn, bg: '#9B6BE8' },
+};
+export const MealIcon = ({ k, size = 44 }: { k: MealKey; size?: number }) => <Disc d={MEAL_STYLE[k].d} bg={MEAL_STYLE[k].bg} size={size} />;
 
 export const card = { backgroundColor: c.card, borderWidth: 1, borderColor: c.line } as const;
 

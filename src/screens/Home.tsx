@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f } from '../theme';
-import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
+import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, scaleEntry, sum, targets, weekDays, type Entry, type MealKey } from '../domain';
 import { useStore } from '../store';
-import { MEAL_ICONS } from '../foodIcons';
+import { FoodIcon } from '../foodIcons';
+import { FactorModal } from './Factor';
 import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
 
@@ -43,12 +44,11 @@ function WeekStrip({ days, selected, onSelect }: { days: ReturnType<typeof weekD
   );
 }
 
-function MealBlock({ mkey, label, entries, open, onToggle, onAdd, onEdit }: { mkey: MealKey; label: string; entries: Entry[]; open: boolean; onToggle: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
+function MealBlock({ label, entries, icons, open, onToggle, onAdd, onFactory, onEdit }: { label: string; entries: Entry[]; icons: Record<string, string | undefined>; open: boolean; onToggle: () => void; onAdd: () => void; onFactory: () => void; onEdit: (id: string) => void }) {
   const total = sum(entries, 'kcal');
   return (
     <View style={s.block}>
       <Pressable onPress={onToggle} style={s.blockHead} accessibilityRole="button" accessibilityLabel={`${label}, ${open ? 'collapse' : 'expand'}`}>
-        <Image source={MEAL_ICONS[mkey]} style={{ width: 38, height: 38 }} />
         <View style={{ flex: 1 }}>
           <Text style={s.blockName}>{label}</Text>
           <Text style={s.blockSub}>{fmt(total)} calories logged</Text>
@@ -63,7 +63,8 @@ function MealBlock({ mkey, label, entries, open, onToggle, onAdd, onEdit }: { mk
             const macros = [amount, e.brand].filter(Boolean).join(' · ');
             return (
               <Pressable key={e.id} onPress={() => onEdit(e.id)} style={s.item} accessibilityLabel={`Edit ${e.name}`}>
-                <View style={{ flex: 1 }}>
+                <FoodIcon name={e.name} icon={e.fk ? icons[e.fk] : undefined} size={38} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={s.itemName} numberOfLines={1}>{e.name}</Text>
                   {macros ? <Text style={s.itemSub}>{macros}</Text> : null}
                 </View>
@@ -71,9 +72,16 @@ function MealBlock({ mkey, label, entries, open, onToggle, onAdd, onEdit }: { mk
               </Pressable>
             );
           })}
-          <Pressable onPress={onAdd} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Add food to ${label}`}>
-            <Text style={s.addText}>Add Food</Text>
-          </Pressable>
+          <View style={s.btnRow}>
+            {entries.length > 0 && (
+              <Pressable onPress={onFactory} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Factory ${label}`}>
+                <Text style={s.addText}>Factory</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={onAdd} style={s.addBtn} accessibilityRole="button" accessibilityLabel={`Add food to ${label}`}>
+              <Text style={s.addText}>Add Food</Text>
+            </Pressable>
+          </View>
         </>
       )}
     </View>
@@ -88,7 +96,9 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   onEdit: (entry: Entry) => void;
   onGoSettings: () => void;
 }) {
-  const { state, setWater } = useStore();
+  const { state, setWater, updateEntry } = useStore();
+  const [factory, setFactory] = useState<{ label: string; entries: Entry[] } | null>(null);
+  const icons = useMemo(() => Object.fromEntries(Object.values(state.foods).map((x) => [x.key, x.icon])), [state.foods]);
   const profile = state.profile!;
   const t = useMemo(() => targets(profile), [profile]);
   const [closed, setClosed] = useState<Partial<Record<MealKey, boolean>>>({});
@@ -107,11 +117,22 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   const litres = Number((count * DROP_L).toFixed(2));
   const setCount = (n: number) => setWater(selected, Math.max(0, Math.min(40, n)));
 
-  const macros = [
-    { name: 'Protein', v: sum(entries, 'p'), goal: t.protein },
-    { name: 'Carbs', v: sum(entries, 'c'), goal: t.carbs },
-    { name: 'Fat', v: sum(entries, 'f'), goal: t.fat },
+  const st = state.settings;
+  type Sub = { name: string; v: number; goal: number };
+  const macros: { name: string; v: number; goal: number; subs: Sub[] }[] = [
+    { name: 'Protein', v: sum(entries, 'p'), goal: t.protein, subs: [] },
+    { name: 'Carbs', v: sum(entries, 'c'), goal: t.carbs, subs: st.showSugar ? [{ name: 'Sugar', v: sum(entries, 'sg'), goal: t.sugar }] : [] },
+    {
+      name: 'Fat', v: sum(entries, 'f'), goal: t.fat,
+      subs: [
+        ...(st.showSalt ? [{ name: 'Salt', v: sum(entries, 'sl'), goal: t.salt }] : []),
+        ...(st.showFiber ? [{ name: 'Fiber', v: sum(entries, 'fi'), goal: t.fiber }] : []),
+        ...(st.showSat ? [{ name: 'Sat. fat', v: sum(entries, 'sf'), goal: t.sat }] : []),
+      ],
+    },
   ];
+  const nSubs = macros.reduce((a, m) => a + m.subs.length, 0);
+  const shown = MEALS.filter((m) => st.meals.includes(m.key) || state.entries.some((e) => e.day === selected && e.meal === m.key));
 
   return (
     <Screen>
@@ -132,7 +153,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
             <Text style={s.ringSmall}>{left >= 0 ? 'kcal left' : 'kcal over'}</Text>
           </View>
         </View>
-        <View style={{ flex: 1, gap: 15 }}>
+        <View style={{ flex: 1, gap: nSubs > 1 ? 10 : 15 }}>
           {macros.map((m) => (
             <View key={m.name}>
               <View style={s.macroTop}>
@@ -140,6 +161,15 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
                 <Text style={s.macroVal}>{Math.round(m.v)}<Text style={s.macroGoal}>/{m.goal}g</Text></Text>
               </View>
               <View style={s.track}><View style={[s.fill, { width: `${Math.min(m.v / m.goal, 1) * 100}%` }]} /></View>
+              {m.subs.map((x) => (
+                <View key={x.name} style={{ marginTop: 6 }}>
+                  <View style={s.macroTop}>
+                    <Text style={s.subName}>{x.name}</Text>
+                    <Text style={s.subVal}>{Math.round(x.v * 10) / 10}<Text style={s.macroGoal}>/{x.goal}g</Text></Text>
+                  </View>
+                  <View style={s.trackS}><View style={[s.fillS, { width: `${Math.min(x.v / x.goal, 1) * 100}%` }]} /></View>
+                </View>
+              ))}
             </View>
           ))}
         </View>
@@ -183,12 +213,13 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
       </View>
 
       <View style={{ marginTop: 18, gap: 12 }}>
-        {MEALS.map((m) => (
+        {shown.map((m) => (
           <MealBlock
             key={m.key}
-            mkey={m.key}
             label={m.label}
+            icons={icons}
             entries={entries.filter((e) => e.meal === m.key)}
+            onFactory={() => setFactory({ label: m.label, entries: entries.filter((e) => e.meal === m.key) })}
             open={!closed[m.key]}
             onToggle={() => setClosed((x) => ({ ...x, [m.key]: !x[m.key] }))}
             onAdd={() => onAdd(m.key, selected)}
@@ -196,6 +227,14 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
           />
         ))}
       </View>
+      <FactorModal
+        visible={!!factory}
+        title={`Factory · ${factory?.label ?? ''}`}
+        confirm="Apply"
+        kcal={factory ? sum(factory.entries, 'kcal') : 0}
+        onClose={() => setFactory(null)}
+        onApply={(k) => { factory?.entries.forEach((e) => updateEntry(e.id, scaleEntry(e, k))); setFactory(null); }}
+      />
     </Screen>
   );
 }
@@ -212,7 +251,7 @@ const s = StyleSheet.create({
   dayN: { fontFamily: f.bold, fontSize: 16, color: c.ink },
   todayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: c.lime },
 
-  hero: { marginHorizontal: 20, marginTop: 14, height: 172, borderRadius: 30, backgroundColor: c.lime, paddingLeft: 18, paddingRight: 20, flexDirection: 'row', alignItems: 'center', gap: 20, overflow: 'hidden' },
+  hero: { marginHorizontal: 20, marginTop: 14, minHeight: 172, paddingVertical: 18, borderRadius: 30, backgroundColor: c.lime, paddingLeft: 18, paddingRight: 20, flexDirection: 'row', alignItems: 'center', gap: 20, overflow: 'hidden' },
   heroBlob: { position: 'absolute', right: -60, top: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.16)' },
   ringCenter: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   ringBig: { fontFamily: f.extra, fontSize: 27, color: c.ink, letterSpacing: -1 },
@@ -221,6 +260,10 @@ const s = StyleSheet.create({
   macroName: { fontFamily: f.semi, fontSize: 12.5, color: c.ink, opacity: 0.78 },
   macroVal: { fontFamily: f.extra, fontSize: 12.5, color: c.ink },
   macroGoal: { fontFamily: f.semi, opacity: 0.6 },
+  subName: { fontFamily: f.semi, fontSize: 11, color: c.ink, opacity: 0.7 },
+  subVal: { fontFamily: f.bold, fontSize: 11, color: c.ink },
+  trackS: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)', overflow: 'hidden' },
+  fillS: { height: 4, borderRadius: 2, backgroundColor: c.ink, opacity: 0.75 },
   track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)', overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4, backgroundColor: c.ink },
 
@@ -244,6 +287,7 @@ const s = StyleSheet.create({
   itemName: { fontFamily: f.semi, fontSize: 15, color: c.ink },
   itemSub: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 2 },
   itemKcal: { fontFamily: f.bold, fontSize: 15, color: c.ink, marginLeft: 12 },
-  addBtn: { alignSelf: 'flex-end', marginTop: 8, backgroundColor: c.tint, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
+  btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  addBtn: { backgroundColor: c.tint, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
   addText: { fontFamily: f.bold, fontSize: 15, color: c.limeText },
 });

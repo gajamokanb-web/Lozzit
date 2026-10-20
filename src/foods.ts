@@ -14,7 +14,7 @@ export type Food = {
 
 /* ── Ciqual (ANSES, Table de composition nutritionnelle 2025, Licence Ouverte Etalab 2.0) ─────────
    Bundled in the app, works offline. Row: [code, name, kcal, protein, carbs, fat, usual portion g (INCA3) | 0] */
-type Row = [number, string, number, number, number, number, number];
+type Row = [number, string, number, number, number, number, number, number, number, number, number]; // …, portion, sugar, sat fat, fibre, salt
 let rows: { r: Row; n: string }[] | null = null;
 
 export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe');
@@ -27,7 +27,7 @@ function load() {
 const toFood = (r: Row): Food => ({
   key: `ciqual:${r[0]}`,
   name: r[1],
-  per: { kcal: r[2], p: r[3], c: r[4], f: r[5] },
+  per: { kcal: r[2], p: r[3], c: r[4], f: r[5], sg: r[7], sf: r[8], fi: r[9], sl: r[10] },
   unit: 'g',
   portion: r[6] > 0 ? { label: `1 portion (${r[6]} g)`, size: r[6] } : undefined,
   src: 'ciqual',
@@ -76,7 +76,7 @@ function offFood(p: any): Food | null {
     key: `off:${p.code}`,
     name,
     brand: (p.brands || '').split(',')[0]?.trim() || undefined,
-    per: { kcal: Math.round(kcal), p: Number(n['proteins_100g']) || 0, c: Number(n['carbohydrates_100g']) || 0, f: Number(n['fat_100g']) || 0 },
+    per: { kcal: Math.round(kcal), p: Number(n['proteins_100g']) || 0, c: Number(n['carbohydrates_100g']) || 0, f: Number(n['fat_100g']) || 0, sg: Number(n['sugars_100g']) || 0, sf: Number(n['saturated-fat_100g']) || 0, fi: Number(n['fiber_100g']) || 0, sl: Number(n['salt_100g']) || 0 },
     unit: liquid ? 'ml' : 'g',
     portion: sq > 0 ? { label: `1 serving (${Math.round(sq)} ${liquid ? 'ml' : 'g'})`, size: sq } : undefined,
     src: 'off',

@@ -3,11 +3,12 @@ import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pre
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f } from '../theme';
-import { entryBase, fmt, fmtDay, MEALS, scale, sum, type Base, type Entry, type MealKey } from '../domain';
+import { entryBase, EXTRAS, fmt, fmtDay, MEALS, scale, scaleEntry, sum, type Base, type Entry, type MealKey, type Per } from '../domain';
 import { letterOf, lookupBarcode, searchCiqual, searchMine, sortKey, type Food } from '../foods';
 import { FOOD_ICON_LIST, FoodIcon, suggestIcon } from '../foodIcons';
 import { useStore } from '../store';
 import { card, Icon, P } from '../ui';
+import { FactorModal } from './Factor';
 
 export type AddTarget = { meal: MealKey; day: string; editId?: string };
 type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons';
@@ -125,6 +126,9 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [qP, setQP] = useState('');
   const [qC, setQC] = useState('');
   const [qF, setQF] = useState('');
+  const [qX, setQX] = useState<string[]>(['', '', '', '']);
+  const [copyDlg, setCopyDlg] = useState<Entry[] | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null);
   // create-food form
   const [nName, setNName] = useState('');
   const [nBrand, setNBrand] = useState('');
@@ -133,6 +137,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [nP, setNP] = useState('');
   const [nC, setNC] = useState('');
   const [nF, setNF] = useState('');
+  const [nX, setNX] = useState<string[]>(['', '', '', '']);
   const [nPortion, setNPortion] = useState('');
   const [nCode, setNCode] = useState('');
   const [nIcon, setNIcon] = useState<string | undefined>(undefined);
@@ -146,7 +151,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   useEffect(() => {
     if (!target) return;
     setMeal(target.meal); setQuery(''); setBusy(false); setMiss(null); setTab('search');
-    setQName(''); setQKcal(''); setQP(''); setQC(''); setQF('');
+    setQName(''); setQKcal(''); setQP(''); setQC(''); setQF(''); setQX(['', '', '', '']); setEditKey(null); setCopyDlg(null);
     scanned.current = false;
     const e = target.editId ? state.entries.find((x) => x.id === target.editId) : undefined;
     if (e) {
@@ -169,7 +174,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     const m = new Map<string, Food>(Object.entries(state.foods));
     for (const e of state.entries) {
       if (!e.fk || m.has(e.fk) || !e.base || e.base.size !== 100) continue;
-      m.set(e.fk, { key: e.fk, name: e.name, brand: e.brand, per: { kcal: e.base.kcal, p: e.base.p, c: e.base.c, f: e.base.f }, unit: e.base.unit === 'ml' ? 'ml' : 'g', portion: e.portion, src: e.fk.startsWith('off:') ? 'off' : 'ciqual' });
+      m.set(e.fk, { key: e.fk, name: e.name, brand: e.brand, per: (({ size: _s, unit: _u, ...per }) => per)(e.base), unit: e.base.unit === 'ml' ? 'ml' : 'g', portion: e.portion, src: e.fk.startsWith('off:') ? 'off' : 'ciqual' });
     }
     return [...m.values()];
   }, [state.foods, state.entries]);
@@ -246,8 +251,8 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     else {
       addEntry({ day: target.day, meal, ...common });
       if (food.fk && food.base.size === 100 && food.base.unit !== 'srv') {
-        const { kcal, p, c: carbs, f: fat, unit } = food.base;
-        saveFood({ key: food.fk, name: food.name, brand: food.brand, per: { kcal, p, c: carbs, f: fat }, unit, portion: food.portion, src: food.src ?? 'ciqual', icon: food.icon, barcode: food.barcode });
+        const { size: _size, unit, ...per } = food.base; // eslint-disable-line @typescript-eslint/no-unused-vars
+        saveFood({ key: food.fk, name: food.name, brand: food.brand, per, unit, portion: food.portion, src: food.src ?? 'ciqual', icon: food.icon, barcode: food.barcode });
       }
     }
     onClose();
@@ -255,23 +260,38 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const quickAdd = () => {
     const kcal = Math.round(num(qKcal));
     if (kcal <= 0) return;
-    const per = { kcal, p: num(qP), c: num(qC), f: num(qF) };
+    const per: Per = { kcal, p: num(qP), c: num(qC), f: num(qF) };
+    EXTRAS.forEach((x, i) => { if (qX[i].trim()) per[x.k] = num(qX[i]); });
     const label = MEALS.find((m) => m.key === meal)!.label;
     addEntry({ day: target.day, meal, name: qName.trim() || label, ...per, base: { ...per, size: 1, unit: 'srv' }, qty: 1 });
     onClose();
   };
-  const copyBlock = (entries: Entry[]) => {
+  const copyBlock = (entries: Entry[], factor: number) => {
     for (const e of entries) {
       const { id, day, meal: _m, ...rest } = e; // eslint-disable-line @typescript-eslint/no-unused-vars
-      addEntry({ ...rest, day: target.day, meal: target.meal });
+      addEntry({ ...rest, ...(factor === 1 ? {} : scaleEntry(e, factor)), day: target.day, meal: target.meal });
     }
+    setCopyDlg(null);
     onClose();
   };
 
   const openCreate = (from: Mode, preset?: { name?: string; code?: string }) => {
     const name = preset?.name ?? '';
+    setEditKey(null); setNX(['', '', '', '']);
     setNName(name); setNBrand(''); setNUnit('g'); setNKcal(''); setNP(''); setNC(''); setNF(''); setNPortion('');
     setNCode(preset?.code ?? ''); setNIcon(suggestIcon(name)); setNIconTouched(false); setCreateFrom(from);
+    setMode('create');
+  };
+  /** Change the nutrition values (per 100 g/ml) of the food being added. */
+  const openEdit = () => {
+    if (!food?.fk) return;
+    const b = food.base;
+    setEditKey(food.fk);
+    setNName(food.name); setNBrand(food.brand ?? ''); setNUnit(b.unit === 'ml' ? 'ml' : 'g');
+    setNKcal(String(b.kcal)); setNP(String(b.p)); setNC(String(b.c)); setNF(String(b.f));
+    setNX(EXTRAS.map((x) => (b[x.k] != null ? String(b[x.k]) : '')));
+    setNPortion(food.portion ? String(food.portion.size) : ''); setNCode(food.barcode ?? '');
+    setNIcon(food.icon ?? suggestIcon(food.name)); setNIconTouched(true); setCreateFrom('qty');
     setMode('create');
   };
   const createOk = nName.trim().length > 0 && num(nKcal) > 0;
@@ -290,11 +310,22 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       barcode: code || undefined,
       icon: nIcon,
     };
+    EXTRAS.forEach((x, i) => { if (nX[i].trim()) fd.per[x.k] = num(nX[i]); });
+    if (editKey) {
+      // updated values replace the stored food and the one on screen; the quantity stays
+      fd.key = editKey;
+      fd.src = food?.src ?? 'custom';
+      saveFood(fd);
+      setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
+      setEditKey(null);
+      setMode('qty');
+      return;
+    }
     saveFood(fd);
     pick(fd);
   };
 
-  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: 'Create food', icons: 'Choose a logo' }[mode];
+  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo' }[mode];
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
     if (mode === 'icons') return setMode('create');
@@ -398,7 +429,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                           <Text style={s.mealDay}>{fmtDay(b.day)}</Text>
                           <Text style={s.resSub}>{label} · {fmt(sum(b.entries, 'kcal'))} kcal</Text>
                         </View>
-                        <Pressable onPress={() => copyBlock(b.entries)} style={s.copyBtn} accessibilityRole="button" accessibilityLabel={`Copy ${label} of ${fmtDay(b.day)}`}>
+                        <Pressable onPress={() => setCopyDlg(b.entries)} style={s.copyBtn} accessibilityRole="button" accessibilityLabel={`Copy ${label} of ${fmtDay(b.day)}`}>
                           <Text style={s.copyT}>Copy</Text>
                         </Pressable>
                       </View>
@@ -469,6 +500,14 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 </View>
               ))}
             </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {EXTRAS.map((x, i) => (
+                <View key={x.k} style={[s.macro, { flexBasis: '47%' }]}>
+                  <Text style={s.macroL}>{x.label} (g, optional)</Text>
+                  <TextInput style={s.macroIn} value={qX[i]} onChangeText={(t) => setQX((v) => v.map((y, j) => (j === i ? t : y)))} placeholder="—" placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectionColor={c.lime} accessibilityLabel={x.label} />
+                </View>
+              ))}
+            </View>
             <Pressable onPress={quickAdd} disabled={num(qKcal) <= 0} style={[s.cta, num(qKcal) <= 0 && { opacity: 0.35 }]}><Text style={s.ctaText}>Add to log</Text></Pressable>
           </ScrollView>
         )}
@@ -512,6 +551,14 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 </View>
               ))}
             </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {EXTRAS.map((x, i) => (
+                <View key={x.k} style={[s.macro, { flexBasis: '47%' }]}>
+                  <Text style={s.macroL}>{x.label} (g, optional)</Text>
+                  <TextInput style={s.macroIn} value={nX[i]} onChangeText={(t) => setNX((v) => v.map((y, j) => (j === i ? t : y)))} placeholder="—" placeholderTextColor={c.soft} keyboardType="decimal-pad" maxLength={5} selectionColor={c.lime} accessibilityLabel={x.label} />
+                </View>
+              ))}
+            </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={[s.macro, { flex: 1 }]}>
                 <Text style={s.macroL}>1 portion ({nUnit}, optional)</Text>
@@ -522,7 +569,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 <TextInput style={s.macroIn} value={nCode} onChangeText={setNCode} placeholder="—" placeholderTextColor={c.soft} keyboardType="number-pad" maxLength={14} selectionColor={c.lime} />
               </View>
             </View>
-            <Pressable onPress={createFood} disabled={!createOk} style={[s.cta, !createOk && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.ctaText}>Save food</Text></Pressable>
+            <Pressable onPress={createFood} disabled={!createOk} style={[s.cta, !createOk && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.ctaText}>{editKey ? 'Save changes' : 'Save food'}</Text></Pressable>
           </ScrollView>
         )}
 
@@ -553,6 +600,9 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 <Text style={s.foodName}>{food.name}</Text>
                 {food.brand ? <Text style={s.resSub}>{food.brand}</Text> : null}
               </View>
+              {food.fk && food.base.size === 100 && (
+                <Pressable onPress={openEdit} style={s.pencil} hitSlop={6} accessibilityRole="button" accessibilityLabel="Edit nutrition values"><Icon d={P.edit} size={18} color={c.limeText} sw={2.2} /></Pressable>
+              )}
             </View>
             {!editing && <MealChips meal={meal} setMeal={setMeal} />}
             <View style={[s.qtyBox, card]}>
@@ -575,6 +625,9 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
             <View style={s.sum}>
               <Text style={s.sumBig}>{fmt(totals.kcal)}<Text style={s.sumUnit}> kcal</Text></Text>
               <Text style={s.sumMacros}>{totals.p}g protein · {totals.c}g carbs · {totals.f}g fat</Text>
+              {EXTRAS.some((x) => totals[x.k] != null) && (
+                <Text style={s.sumMacros}>{EXTRAS.filter((x) => totals[x.k] != null).map((x) => `${x.label.toLowerCase()} ${Math.round((totals[x.k] as number) * 10) / 10} g`).join(' · ')}</Text>
+              )}
             </View>
             <Pressable onPress={save} disabled={q <= 0} style={[s.cta, q <= 0 && { opacity: 0.35 }]} accessibilityRole="button">
               <Text style={s.ctaText}>{editing ? 'Save' : `Add to ${mealLabel.toLowerCase()}`}</Text>
@@ -587,14 +640,23 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           </ScrollView>
         )}
       </KeyboardAvoidingView>
+      <FactorModal
+        visible={!!copyDlg}
+        title="Copy this meal"
+        confirm={`Copy into ${mealLabel.toLowerCase()}`}
+        kcal={copyDlg ? sum(copyDlg, 'kcal') : 0}
+        onClose={() => setCopyDlg(null)}
+        onApply={(k) => copyDlg && copyBlock(copyDlg, k)}
+      />
     </Modal>
   );
 }
 
 function MealChips({ meal, setMeal }: { meal: MealKey; setMeal: (m: MealKey) => void }) {
+  const { state } = useStore();
   return (
     <View style={s.chips}>
-      {MEALS.map((m) => (
+      {MEALS.filter((m) => m.key === meal || state.settings.meals.includes(m.key)).map((m) => (
         <Pressable key={m.key} onPress={() => setMeal(m.key)} style={[s.mchip, meal === m.key && { backgroundColor: c.ink }]}>
           <Text style={[s.mchipText, meal === m.key && { color: c.lime }]}>{m.label}</Text>
         </Pressable>
@@ -648,6 +710,7 @@ const s = StyleSheet.create({
   mchipText: { fontFamily: f.bold, fontSize: 13, color: c.ink },
   input: { ...card, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, fontFamily: f.medium, fontSize: 15, color: c.ink },
   fieldL: { fontFamily: f.semi, fontSize: 13.5, color: c.muted, marginRight: 4 },
+  pencil: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.tint, alignItems: 'center', justifyContent: 'center' },
   iconPick: { width: 84, borderRadius: 20, paddingVertical: 8, alignItems: 'center' },
   iconPickT: { fontFamily: f.bold, fontSize: 11.5, color: c.limeText, marginTop: 2 },
   iconCell: { width: '25%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, borderRadius: 16 },

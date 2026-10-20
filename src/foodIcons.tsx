@@ -1,8 +1,8 @@
 import React from 'react';
 import { Image } from 'react-native';
-import { FOOD_ICONS, FOOD_ICON_LIST, MEAL_ICONS } from './iconAssets';
+import { FOOD_ICONS, FOOD_ICON_LIST } from './iconAssets';
 
-export { FOOD_ICON_LIST, MEAL_ICONS };
+export { FOOD_ICON_LIST };
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe');
 
