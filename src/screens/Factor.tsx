@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../i18n';
 import { c, f, onTheme } from '../theme';
 import { fmt } from '../domain';
+import { KbView } from '../ui';
 
 type Op = '×' | '÷';
 const CHIPS: [Op, number][] = [['÷', 4], ['÷', 3], ['÷', 2], ['×', 1.5], ['×', 2], ['×', 3]];
@@ -17,7 +18,7 @@ export function FactorModal({ visible, title, confirm, kcal, onApply, onClose }:
   const factor = ok ? (op === '×' ? v : 1 / v) : 1;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={s.wrap}>
+      <KbView style={s.wrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
         <View style={s.card}>
           <Text style={s.h}>{title}</Text>
@@ -46,7 +47,7 @@ export function FactorModal({ visible, title, confirm, kcal, onApply, onClose }:
           <Pressable onPress={() => ok && onApply(factor)} disabled={!ok} style={[s.cta, !ok && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.ctaT}>{confirm}</Text></Pressable>
           <Pressable onPress={onClose} style={{ alignSelf: 'center', padding: 10 }}><Text style={s.link}>Cancel</Text></Pressable>
         </View>
-      </View>
+      </KbView>
     </Modal>
   );
 }

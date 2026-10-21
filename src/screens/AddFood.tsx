@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text, TextInput } from '../i18n';
+import { ActivityIndicator, FlatList, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput, tr, getLang } from '../i18n';
+import { ICON_FR } from '../iconNames';
+import { askConfirm, notify } from '../dialog';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,13 +12,13 @@ import { letterOf, lookupBarcode, searchCiqual, searchMine, sortKey, type Food }
 import { readLabel, DEFAULT_MODEL } from '../vision';
 import { FOOD_ICON_LIST, FoodIcon, suggestIcon } from '../foodIcons';
 import { useStore } from '../store';
-import { card, Icon, P } from '../ui';
+import { card, Icon, P, KbView } from '../ui';
 import { FactorModal } from './Factor';
 
 /** pick: choose a food for something else (e.g. a recipe) instead of logging it; the callback gets the food. */
 export type AddTarget = { meal: MealKey; day: string; editId?: string; scan?: boolean; pick?: (fd: Food) => void; query?: string; create?: boolean };
 type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev';
-type Tab = 'search' | 'mine' | 'meals';
+type Tab = 'search' | 'mine' | 'meals' | 'recipes';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
 const num = (t: string) => {
@@ -113,7 +115,7 @@ function AlphaList({ foods, onPick, bottom }: { foods: Food[]; onPick: (fd: Food
 }
 
 export function AddFood({ target, onClose }: { target: AddTarget | null; onClose: () => void }) {
-  const { state, addEntry, updateEntry, removeEntry, saveFood } = useStore();
+  const { state, addEntry, updateEntry, removeEntry, saveFood, setSettings } = useStore();
   const { top, bottom } = useSafeAreaInsets();
   const [perm, askPerm] = useCameraPermissions();
 
@@ -148,6 +150,10 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [nIcon, setNIcon] = useState<string | undefined>(undefined);
   const [nIconTouched, setNIconTouched] = useState(false);
   const [iconQ, setIconQ] = useState('');
+  const [iconEdit, setIconEdit] = useState(false);
+  const [renIcon, setRenIcon] = useState<{ key: string; name: string } | null>(null);
+  const [recQ, setRecQ] = useState('');
+  const [labelFrom, setLabelFrom] = useState<Mode>('create');
   const [createFrom, setCreateFrom] = useState<Mode>('main');
   const scanned = useRef(false);
   const cam = useRef<CameraView>(null);
@@ -179,7 +185,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Foods already logged on this day are not offered again: tap them on the dashboard to change the quantity.
-  const todayKeys = useMemo(() => new Set(target?.pick ? [] : state.entries.filter((e) => e.day === target?.day).map((e) => e.fk ?? e.name)), [state.entries, target?.day, target?.pick]);
+  const todayKeys = useMemo(() => new Set<string>(), []);
 
   /** Own database: everything saved (added, scanned, created) + foods found in older log entries. */
   const mine = useMemo(() => {
@@ -227,6 +233,18 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     const order = (m: MealKey) => MEALS.findIndex((x) => x.key === m);
     return [...g.values()].sort((a, b) => (a.day === b.day ? order(a.meal) - order(b.meal) : a.day < b.day ? 1 : -1));
   }, [state.entries, target?.day, target?.meal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const iconNames = state.settings.iconNames ?? {};
+  const iconLabel = (k: string, en: string) => (iconNames[k] !== undefined ? iconNames[k] : getLang() === 'fr' ? ICON_FR[k] ?? en : en);
+  const normS = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const iconList = useMemo(() => {
+    const q = normS(iconQ.trim());
+    return FOOD_ICON_LIST.filter((i) => !q || [i.name, ICON_FR[i.key] ?? '', iconNames[i.key] ?? ''].some((n) => normS(n).includes(q)));
+  }, [iconQ, iconNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recipeList = useMemo(() => {
+    const q = normS(recQ.trim());
+    return state.recipes.filter((r) => !q || normS(r.title).includes(q) || r.ingredients.some((i) => normS(i.name).includes(q)));
+  }, [state.recipes, recQ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!target) return null;
 
@@ -280,6 +298,22 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     addEntry({ day: target.day, meal, name: qName.trim() || label, ...per, base: { ...per, size: 1, unit: 'srv' }, qty: 1 });
     onClose();
   };
+  /** Logs the ingredients of a recipe for one serving. */
+  const addRecipe = (r: (typeof state.recipes)[number]) => {
+    const n = r.servings && r.servings > 0 ? r.servings : 1;
+    let added = 0, skipped = 0;
+    for (const i of r.ingredients) {
+      const fd = i.fk ? state.foods[i.fk] : undefined;
+      if (!fd || !(i.g > 0)) { skipped++; continue; }
+      const base: Base = { ...fd.per, size: 100, unit: fd.unit };
+      const qty = Math.round((i.g / n) * 10) / 10;
+      addEntry({ day: target.day, meal, name: fd.name, brand: fd.brand, ...scale(base, qty), base, qty, fk: fd.key, portion: fd.portion });
+      added++;
+    }
+    if (added === 0) { notify('Nothing to add', 'No ingredient of this recipe is linked to a food yet.'); return; }
+    if (skipped > 0) notify('Recipe added', `${skipped} ingredient(s) without a linked food were left out.`);
+    onClose();
+  };
   const copyBlock = (entries: Entry[], factor: number) => {
     for (const e of entries) {
       const { id, day, meal: _m, ...rest } = e; // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -289,7 +323,8 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     onClose();
   };
 
-  const openLabel = async () => {
+  const openLabel = async (from: Mode = 'create') => {
+    setLabelFrom(from);
     setLabelMsg('');
     if (!state.settings.groqKey.trim()) return setLabelMsg('Add your Groq API key first: Profile → AI label scan.');
     if (!perm?.granted) { const r = await askPerm(); if (!r.granted) return setLabelMsg('Camera permission is needed to photograph the label.'); }
@@ -343,6 +378,13 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   /** The user validated the scanned values: move them into the create-food form. */
   const useScanned = () => {
     if (!res) return;
+    if (labelFrom === 'quick') {
+      setQKcal(res.kcal); setQP(res.p); setQC(res.c); setQF(res.f); setQX(res.x);
+      if (res.name.trim() && !qName.trim()) setQName(res.name.trim());
+      setLabelMsg('Values read from the label (per 100 g): check them before adding.');
+      setMode('quick');
+      return;
+    }
     setNUnit('g'); setNBasis('100');
     setNKcal(res.kcal); setNP(res.p); setNC(res.c); setNF(res.f); setNX(res.x);
     if (res.portion) setNPortion(res.portion);
@@ -391,9 +433,11 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     };
     EXTRAS.forEach((x, i) => { if (nX[i].trim()) fd.per[x.k] = Math.round(num(nX[i]) * k * 100) / 100; });
     if (editKey) {
-      // updated values replace the stored food and the one on screen; the quantity stays
-      fd.key = editKey;
-      fd.src = 'custom'; // edited values are no longer the original table's
+      // the stored food stays as it was: the edited values become a new version of it; the quantity stays
+      const same = nName.trim().toLowerCase() === (food?.name ?? '').toLowerCase();
+      if (same) fd.name = `${nName.trim()} (${tr('edited')})`;
+      fd.key = `my:${Date.now().toString(36)}`;
+      fd.src = 'custom';
       saveFood(fd);
       setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
       setEditKey(null);
@@ -408,7 +452,8 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
     if (mode === 'prev') return setMode('label');
-    if (mode === 'icons' || mode === 'label') return setMode('create');
+    if (mode === 'icons') return setMode('create');
+    if (mode === 'label') return setMode(labelFrom);
     if (mode === 'create') return setMode(createFrom);
     setMode('main');
   };
@@ -416,22 +461,26 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
   return (
     <Modal visible animationType="slide" onRequestClose={back} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.page }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KbView style={{ flex: 1, backgroundColor: c.page }}>
         <View style={[s.head, { paddingTop: top + 10 }]}>
           <Pressable onPress={back} style={s.round} accessibilityLabel="Back"><Icon d={mode === 'main' ? P.x : P.back} size={20} /></Pressable>
           <View style={{ alignItems: 'center' }}>
             <Text style={s.h}>{title}</Text>
             {mode === 'main' && !target.pick && <Text style={s.headSub}>{mealLabel}</Text>}
           </View>
-          <View style={{ width: 42 }} />
+          {mode === 'icons' ? (
+            <Pressable onPress={() => setIconEdit((v) => !v)} style={[s.editBtn, iconEdit && { backgroundColor: c.btn }]} accessibilityRole="button" accessibilityLabel="Edit logo names">
+              <Text style={[s.editBtnT, iconEdit && { color: c.lime }]}>{iconEdit ? 'Done' : 'Edit'}</Text>
+            </Pressable>
+          ) : <View style={{ width: 42 }} />}
         </View>
 
         {mode === 'main' && (
           <>
             <View style={s.tabs}>
-              {([['search', 'Search'], ['mine', 'My Foods'], ['meals', 'Meals']] as const).filter(([k]) => !(target.pick && k === 'meals')).map(([k, l]) => (
+              {([['search', 'Search'], ['mine', 'My Foods'], ['recipes', 'Recipes'], ['meals', 'Meals']] as const).filter(([k]) => !(target.pick && (k === 'meals' || k === 'recipes'))).map(([k, l]) => (
                 <Pressable key={k} onPress={() => setTab(k)} style={[s.tabB, tab === k && { backgroundColor: c.btn }]} accessibilityRole="button">
-                  <Text style={[s.tabT, tab === k && { color: c.lime }]}>{l}</Text>
+                  <Text style={[s.tabT, tab === k && { color: c.lime }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{l}</Text>
                 </Pressable>
               ))}
             </View>
@@ -456,7 +505,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                     <>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         {!target.pick && (
-                          <Pressable onPress={() => setMode('quick')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
+                          <Pressable onPress={() => { setLabelMsg(''); setMode('quick'); }} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
                             <Icon d={P.flame} size={18} color={c.limeText} sw={2.4} />
                             <Text style={s.quickT}>Quick add</Text>
                           </Pressable>
@@ -498,8 +547,30 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
               </View>
             )}
 
+            {tab === 'recipes' && (
+              <>
+                <View style={s.searchRow}>
+                  <TextInput style={s.search} value={recQ} onChangeText={setRecQ} placeholder="Search a recipe or an ingredient" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} accessibilityLabel="Search recipes" />
+                </View>
+                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20 }}>
+                  {state.recipes.length === 0 && <Text style={s.hint}>Your recipes will appear here: create one in the Recipes tab.</Text>}
+                  {recipeList.map((r) => (
+                    <Pressable key={r.id} onPress={() => addRecipe(r)} style={s.recRow} accessibilityRole="button" accessibilityLabel={r.title || 'Recipe'}>
+                      <FoodIcon name="" icon="recipe" size={38} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.recName} numberOfLines={1}>{r.title || 'Untitled recipe'}</Text>
+                        <Text style={s.resSub} numberOfLines={1}>{r.cat === 'Draft' ? tr('Draft') : tr(r.cat)}</Text>
+                      </View>
+                      <Icon d={P.plus} size={18} color={c.limeText} sw={2.6} />
+                    </Pressable>
+                  ))}
+                  {state.recipes.length > 0 && recipeList.length === 0 && <Text style={s.hint}>No recipe found.</Text>}
+                </ScrollView>
+              </>
+            )}
+
             {tab === 'meals' && (
-              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20, gap: 12 }}>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: Math.max(bottom, 16) + 20, gap: 6 }}>
                 <Text style={s.hintS}>{`Copy a meal from a previous day into ${mealLabel.toLowerCase()}.`}</Text>
                 {blocks.length === 0 && <Text style={s.hint}>Meals you have logged will appear here, most recent first.</Text>}
                 {blocks.map((b) => {
@@ -571,6 +642,14 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         {mode === 'quick' && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12 }}>
             <MealChips meal={meal} setMeal={setMeal} />
+            <Pressable onPress={() => openLabel('quick')} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Autofill from a nutrition label">
+              <Icon d={P.camera} size={20} color={c.limeText} sw={2.2} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.quickT}>Autofill</Text>
+                <Text style={s.resSub}>Photograph a nutrition label to fill the values</Text>
+              </View>
+            </Pressable>
+            {labelMsg ? <Text style={[s.hintS, { color: /^Values/.test(labelMsg) ? c.limeText : c.red }]}>{labelMsg}</Text> : null}
             <TextInput style={s.input} value={qName} onChangeText={setQName} placeholder="Name (optional)" placeholderTextColor={c.soft} maxLength={40} selectionColor={c.lime} />
             <View style={s.kcalBox}>
               <TextInput style={s.kcalInput} value={qKcal} onChangeText={setQKcal} placeholder="0" placeholderTextColor={c.soft} keyboardType="number-pad" maxLength={4} selectionColor={c.lime} autoFocus />
@@ -599,7 +678,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         {mode === 'create' && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
             {!editKey && (
-              <Pressable onPress={openLabel} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Scan nutrition label">
+              <Pressable onPress={() => openLabel('create')} style={[s.labelBtn, card]} accessibilityRole="button" accessibilityLabel="Scan nutrition label">
                 <Icon d={P.camera} size={20} color={c.limeText} sw={2.2} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.quickT}>Scan the nutrition label</Text>
@@ -731,22 +810,39 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
         {mode === 'icons' && (
           <View style={{ flex: 1 }}>
-            <TextInput style={[s.input, { marginHorizontal: 20, marginBottom: 8 }]} value={iconQ} onChangeText={setIconQ} placeholder="Filter (English names)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} />
+            <TextInput style={[s.input, { marginHorizontal: 20, marginBottom: 8 }]} value={iconQ} onChangeText={setIconQ} placeholder="Filter (English or French names)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} />
+            {iconEdit && <Text style={[s.hintS, { marginHorizontal: 20, marginBottom: 6 }]}>Tap a logo to rename it or remove its name.</Text>}
             <FlatList
-              data={FOOD_ICON_LIST.filter((i) => i.name.toLowerCase().includes(iconQ.trim().toLowerCase()))}
+              data={iconList}
               keyExtractor={(i) => i.key}
               numColumns={4}
               contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: Math.max(bottom, 16) + 20 }}
               keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
-                <Pressable onPress={() => { setNIcon(item.key); setNIconTouched(true); setMode('create'); }} style={[s.iconCell, nIcon === item.key && { backgroundColor: c.tint }]} accessibilityLabel={item.name}>
+                <Pressable onPress={() => { if (iconEdit) { setRenIcon({ key: item.key, name: iconLabel(item.key, item.name) }); return; } setNIcon(item.key); setNIconTouched(true); setMode('create'); }} style={[s.iconCell, !iconEdit && nIcon === item.key && { backgroundColor: c.tint }]} accessibilityLabel={iconLabel(item.key, item.name) || item.name}>
                   <FoodIcon name="" icon={item.key} size={48} />
-                  <Text style={s.iconCellT} numberOfLines={2}>{item.name}</Text>
+                  <Text style={s.iconCellT} numberOfLines={2}>{iconLabel(item.key, item.name)}</Text>
                 </Pressable>
               )}
             />
           </View>
         )}
+        <Modal visible={!!renIcon} transparent animationType="fade" onRequestClose={() => setRenIcon(null)} statusBarTranslucent>
+          <KbView style={s.renWrap}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRenIcon(null)} accessibilityLabel="Close" />
+            {renIcon && (
+              <View style={[s.renBox, { backgroundColor: c.card }]}>
+                <View style={{ alignItems: 'center' }}><FoodIcon name="" icon={renIcon.key} size={64} /></View>
+                <TextInput style={s.input} value={renIcon.name} onChangeText={(v) => setRenIcon({ ...renIcon, name: v })} placeholder="Logo name" placeholderTextColor={c.soft} selectionColor={c.lime} autoFocus maxLength={40} accessibilityLabel="Logo name" />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Pressable onPress={() => { setSettings({ iconNames: { ...iconNames, [renIcon.key]: '' } }); setRenIcon(null); }} style={[s.renBtn, { backgroundColor: c.page }]} accessibilityRole="button"><Text style={[s.renT, { color: c.red }]}>Remove name</Text></Pressable>
+                  <Pressable onPress={() => { const n = { ...iconNames }; delete n[renIcon.key]; setSettings({ iconNames: n }); setRenIcon(null); }} style={[s.renBtn, { backgroundColor: c.page }]} accessibilityRole="button"><Text style={[s.renT, { color: c.ink }]}>Reset</Text></Pressable>
+                </View>
+                <Pressable onPress={() => { setSettings({ iconNames: { ...iconNames, [renIcon.key]: renIcon.name.trim() } }); setRenIcon(null); }} style={s.renSave} accessibilityRole="button"><Text style={[s.renT, { color: c.lime }]}>Save</Text></Pressable>
+              </View>
+            )}
+          </KbView>
+        </Modal>
 
         {mode === 'qty' && food && totals && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: Math.max(bottom, 16) + 20 }}>
@@ -795,7 +891,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
             )}
           </ScrollView>
         )}
-      </KeyboardAvoidingView>
+      </KbView>
       <FactorModal
         visible={!!copyDlg}
         title="Copy this meal"
@@ -819,24 +915,33 @@ function TorchBtn({ on, toggle }: { on: boolean; toggle: () => void }) {
 function MealChips({ meal, setMeal }: { meal: MealKey; setMeal: (m: MealKey) => void }) {
   const { state } = useStore();
   return (
-    <View style={s.chips}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0, flexShrink: 1, maxWidth: '100%', alignSelf: 'stretch' }} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
       {MEALS.filter((m) => m.key === meal || state.settings.meals.includes(m.key)).map((m) => (
         <Pressable key={m.key} onPress={() => setMeal(m.key)} style={[s.mchip, meal === m.key && { backgroundColor: c.btn }]}>
           <Text style={[s.mchipText, meal === m.key && { color: c.lime }]}>{m.label}</Text>
         </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
 const mkStyles = () => StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 10 },
+  renWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+  renBox: { borderRadius: 26, padding: 18, gap: 12 },
+  renBtn: { flex: 1, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  renSave: { height: 50, borderRadius: 25, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
+  renT: { fontFamily: f.bold, fontSize: 14.5 },
+  editBtn: { ...card, minWidth: 42, height: 42, borderRadius: 21, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  editBtnT: { fontFamily: f.bold, fontSize: 13.5, color: c.ink },
   round: { width: 42, height: 42, borderRadius: 21, ...card, alignItems: 'center', justifyContent: 'center' },
   h: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4 },
   headSub: { fontFamily: f.semi, fontSize: 12.5, color: c.muted, marginTop: 1 },
   tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
-  tabB: { ...card, flex: 1, borderRadius: 20, paddingVertical: 10, alignItems: 'center' },
-  tabT: { fontFamily: f.bold, fontSize: 13.5, color: c.ink },
+  tabB: { ...card, flex: 1, borderRadius: 20, paddingVertical: 10, paddingHorizontal: 2, alignItems: 'center' },
+  recRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  recName: { fontFamily: f.medium, fontSize: 15.5, color: c.ink },
+  tabT: { fontFamily: f.bold, fontSize: 12.5, color: c.ink },
   searchRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginBottom: 8 },
   search: { ...card, flex: 1, borderRadius: 22, paddingHorizontal: 18, height: 52, fontFamily: f.medium, fontSize: 16, color: c.ink },
   scanBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.lime, alignItems: 'center', justifyContent: 'center' },
@@ -901,7 +1006,7 @@ const mkStyles = () => StyleSheet.create({
   iconCell: { width: '25%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, borderRadius: 16 },
   iconCellT: { fontFamily: f.medium, fontSize: 10.5, color: c.muted, textAlign: 'center', marginTop: 3 },
   kcalBox: { ...card, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 8, flexDirection: 'row', alignItems: 'baseline' },
-  kcalInput: { flex: 1, fontFamily: f.extra, fontSize: 32, color: c.ink, letterSpacing: -0.8 },
+  kcalInput: { flex: 1, minWidth: 0, fontFamily: f.extra, fontSize: 32, color: c.ink, letterSpacing: -0.8 },
   unit: { fontFamily: f.semi, fontSize: 15, color: c.muted },
   macro: { ...card, flex: 1, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   macroL: { fontFamily: f.semi, fontSize: 11, color: c.muted },

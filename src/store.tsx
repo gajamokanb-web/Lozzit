@@ -4,9 +4,9 @@ import type { Entry, MealKey, Profile } from './domain';
 import type { Food } from './foods';
 import { DEFAULT_CATS, type Recipe } from './recipes';
 
-type Settings = { fit: boolean; stepSource: string; meals: MealKey[]; showSugar: boolean; showSalt: boolean; showFiber: boolean; showSat: boolean; stepGoal: number; groqKey: string; groqModel: string; theme: 'light' | 'dark' | 'system'; lang: 'en' | 'fr' }; // stepSource: 'all' or a Health Connect package name
+type Settings = { fit: boolean; stepSource: string; meals: MealKey[]; showSugar: boolean; showSalt: boolean; showFiber: boolean; showSat: boolean; stepGoal: number; groqKey: string; groqModel: string; iconNames: Record<string, string>; theme: 'light' | 'dark' | 'system'; lang: 'en' | 'fr' }; // stepSource: 'all' or a Health Connect package name
 type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; weights: Record<string, number>; foods: Record<string, Food>; recipes: Recipe[]; recipeCats: string[]; settings: Settings };
-const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, recipes: [], recipeCats: DEFAULT_CATS, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000, groqKey: '', groqModel: 'qwen/qwen3.8-27b', theme: 'light', lang: /^fr/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? 'fr' : 'en' } };
+const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, recipes: [], recipeCats: DEFAULT_CATS, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000, groqKey: '', groqModel: 'qwen/qwen3.8-27b', iconNames: {}, theme: 'light', lang: /^fr/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? 'fr' : 'en' } };
 const KEY = 'lozzit:v1';
 
 type Store = {
@@ -18,6 +18,7 @@ type Store = {
   updateEntry: (id: string, patch: Partial<Entry>) => void;
   setWater: (day: string, drops: number) => void;
   setWeight: (day: string, kg: number) => void;
+  removeWeight: (day: string) => void;
   saveFood: (food: Food) => void;
   setSettings: (s: Partial<Settings>) => void;
   reset: () => void;
@@ -72,6 +73,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }),
     [],
   );
+  const removeWeight = useCallback(
+    (day: string) =>
+      setState((s) => {
+        const weights = { ...s.weights };
+        delete weights[day];
+        const latest = Object.keys(weights).sort().pop();
+        return { ...s, weights, profile: s.profile && latest ? { ...s.profile, weightKg: weights[latest] } : s.profile };
+      }),
+    [],
+  );
   /** Own food database: everything added, scanned or created. */
   const saveFood = useCallback((food: Food) => setState((s) => ({ ...s, foods: { ...s.foods, [food.key]: { ...s.foods[food.key], ...food } } })), []);
   const setSettings = useCallback((p: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...p } })), []);
@@ -95,8 +106,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData }),
-    [ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData],
+    () => ({ ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, removeWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData }),
+    [ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, removeWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

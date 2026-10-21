@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../i18n';
 import { c, f, onTheme } from '../theme';
 import { EXTRAS, fmt, sum, type Entry } from '../domain';
@@ -9,10 +9,15 @@ export type MenuItem = { label: string; icon: string[]; danger?: boolean; onPres
 
 /** Small popup list anchored under the "⋮" button of a meal block. */
 export function BlockMenu({ anchorY, items, onClose }: { anchorY: number | null; items: MenuItem[]; onClose: () => void }) {
+  const { height } = useWindowDimensions();
+  const est = items.length * 49 + 8;
+  const y = anchorY ?? 0;
+  const up = y + 8 + est > height - 24; // not enough room below the "⋮": open upwards
+  const pos = up ? { bottom: Math.max(16, height - (y - 36) + 6) } : { top: Math.max(60, y + 8) };
   return (
     <Modal visible={anchorY != null} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close menu" />
-      <View style={[s.menu, card, { top: Math.max(60, (anchorY ?? 0) + 8) }]}>
+      <View style={[s.menu, card, pos]}>
         {items.map((it, i) => (
           <Pressable key={it.label} onPress={() => { onClose(); it.onPress(); }} style={[s.row, i > 0 && { borderTopWidth: 1, borderTopColor: c.line }]} accessibilityRole="button" accessibilityLabel={it.label}>
             <Icon d={it.icon} size={19} color={it.danger ? c.red : c.ink} sw={2} />
@@ -93,3 +98,31 @@ const mkStyles = () => StyleSheet.create({
 });
 let s = mkStyles();
 onTheme(() => { s = mkStyles(); });
+
+/** Small chooser of the meal a copied block goes into. */
+export function MealPick({ visible, title, meals, initial, onPick, onClose }: { visible: boolean; title: string; meals: { key: any; label: string }[]; initial?: string; onPick: (k: any) => void; onClose: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={mp.wrap}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <View style={mp.box}>
+          <Text style={mp.title}>{title}</Text>
+          {meals.map((m, i) => (
+            <Pressable key={m.key} onPress={() => onPick(m.key)} style={[mp.row, i > 0 && { borderTopWidth: 1, borderTopColor: c.line }]} accessibilityRole="button" accessibilityLabel={m.label}>
+              <Text style={[mp.txt, m.key === initial && { fontFamily: f.extra }]}>{m.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+const mkMp = () => StyleSheet.create({
+  wrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 24 },
+  box: { backgroundColor: c.card, borderRadius: 26, padding: 18, borderWidth: 1, borderColor: c.line },
+  title: { fontFamily: f.extra, fontSize: 18, color: c.ink, marginBottom: 8 },
+  row: { paddingVertical: 14 },
+  txt: { fontFamily: f.semi, fontSize: 16, color: c.ink },
+});
+let mp = mkMp();
+onTheme(() => { mp = mkMp(); });

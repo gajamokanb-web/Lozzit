@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text, tr } from '../i18n';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput, tr } from '../i18n';
+import { askConfirm } from '../dialog';
+import { Calendar } from './Calendar';
 import Svg, { Circle, Line, Path, Text as SText } from 'react-native-svg';
 import { c, f, onTheme } from '../theme';
-import { addDays, dayKey, fmt, parseKey, sum, targets, weekDays } from '../domain';
+import { addDays, dayKey, fmt, fmtDay, parseKey, sum, targets, weekDays } from '../domain';
 import { useStore } from '../store';
 import { useSteps } from '../steps';
-import { card, Icon, P, Screen, Title } from '../ui';
+import { card, Icon, KbView, P, Screen, Title } from '../ui';
 
 const FAT = '#F6B26B', CARB = '#5BAEDC', PROT = '#6C63E0';
 const BAR_H = 150;
@@ -112,9 +114,72 @@ function WeightChart({ pts, goal }: { pts: [string, number][]; goal: number }) {
   );
 }
 
+/** History of weigh-ins: edit (value and date) or delete each one. */
+function WeightLogs({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { state, setWeight, removeWeight } = useStore();
+  const [ed, setEd] = useState<{ day: string; to: string; kg: string } | null>(null);
+  const [cal, setCal] = useState(false);
+  const rows = Object.entries(state.weights).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  const kgNum = ed ? parseFloat(ed.kg.replace(',', '.')) : NaN;
+  const ok = Number.isFinite(kgNum) && kgNum >= 20 && kgNum <= 400;
+  const save = () => {
+    if (!ed || !ok) return;
+    if (ed.to !== ed.day) removeWeight(ed.day);
+    setWeight(ed.to, Math.round(kgNum * 10) / 10);
+    setEd(null);
+  };
+  const del = (day: string) => askConfirm({ title: 'Delete this weigh-in?', message: fmtDay(day), confirmText: tr('Delete'), danger: true }).then((o) => { if (o) removeWeight(day); });
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={s.lWrap}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <View style={s.lBox}>
+          <View style={s.lHead}>
+            <Text style={s.cardT}>Weight logs</Text>
+            <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close logs"><Icon d={P.x} size={20} color={c.muted} /></Pressable>
+          </View>
+          {rows.length === 0 ? <Text style={s.empty}>No weigh-in yet.</Text> : (
+            <ScrollView style={{ maxHeight: 420 }}>
+              {rows.map(([d, kg], i) => (
+                <View key={d} style={[s.lRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.line }]}>
+                  <Pressable onPress={() => setEd({ day: d, to: d, kg: String(kg) })} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} accessibilityRole="button" accessibilityLabel={`Edit ${d}`}>
+                    <Text style={s.lDate}>{fmtDay(d)}</Text>
+                    <Text style={s.lKg}>{`${kg} kg`}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => del(d)} hitSlop={8} style={{ paddingLeft: 14 }} accessibilityRole="button" accessibilityLabel={`Delete ${d}`}><Icon d={P.trash} size={18} color={c.red} /></Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+      <Modal visible={!!ed} transparent animationType="fade" onRequestClose={() => setEd(null)} statusBarTranslucent>
+        <KbView style={s.lWrap}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEd(null)} accessibilityLabel="Close" />
+          {ed && (
+            <View style={s.lBox}>
+              <Text style={s.cardT}>Edit weigh-in</Text>
+              <Pressable onPress={() => setCal(true)} style={s.lDateBtn} accessibilityRole="button" accessibilityLabel="Choose the date">
+                <Icon d={P.calendar} size={16} color={c.limeText} sw={2.2} /><Text style={s.lDateT}>{fmtDay(ed.to)}</Text>
+              </Pressable>
+              <View style={s.lKgBox}>
+                <TextInput style={s.lKgIn} value={ed.kg} onChangeText={(v) => setEd({ ...ed, kg: v })} keyboardType="decimal-pad" maxLength={6} selectTextOnFocus selectionColor={c.lime} accessibilityLabel="Weight in kilograms" />
+                <Text style={s.lUnit}>kg</Text>
+              </View>
+              <Pressable onPress={save} disabled={!ok} style={[s.lCta, !ok && { opacity: 0.35 }]} accessibilityRole="button"><Text style={s.lCtaT}>Save</Text></Pressable>
+            </View>
+          )}
+          <Calendar visible={cal} selected={ed?.to ?? dayKey()} marks={new Set(Object.keys(state.weights))} title="Date of the weigh-in" onPick={(k) => setEd((e) => e && { ...e, to: k })} onClose={() => setCal(false)} />
+        </KbView>
+      </Modal>
+    </Modal>
+  );
+}
+
 /** Stats: this week's calories, macros and steps, plus weight over time. */
 export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
   const { state } = useStore();
+  const [logs, setLogs] = useState(false);
   const t = targets(state.profile!);
   const days = useMemo(() => weekDays(), []);
   const today = dayKey();
@@ -253,7 +318,12 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
       <View style={[s.card, card]}>
         <CardHead
           title="Weight"
-          right={<Pressable onPress={onLogWeight} style={s.plus} accessibilityRole="button" accessibilityLabel="Log weight"><Icon d={P.plus} size={18} sw={2.8} color={c.lime} /></Pressable>}
+          right={(
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pressable onPress={() => setLogs(true)} style={s.logsBtn} accessibilityRole="button" accessibilityLabel="Weight logs"><Icon d={P.list} size={15} sw={2.4} color={c.ink} /><Text style={s.logsT}>Logs</Text></Pressable>
+              <Pressable onPress={onLogWeight} style={s.plus} accessibilityRole="button" accessibilityLabel="Log weight"><Icon d={P.plus} size={18} sw={2.8} color={c.lime} /></Pressable>
+            </View>
+          )}
         />
         <View style={s.wRow}>
           <Text style={s.wBig}>{last != null ? last : '—'}<Text style={s.wUnit}> kg</Text></Text>
@@ -269,11 +339,27 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
         </View>
         <Text style={s.rangeName}>{RANGES[range][1]} · dashed line = goal {state.profile!.goalKg} kg</Text>
       </View>
+      <WeightLogs visible={logs} onClose={() => setLogs(false)} />
     </Screen>
   );
 }
 
 const mkStyles = () => StyleSheet.create({
+  logsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, borderRadius: 17, paddingHorizontal: 12, backgroundColor: c.page, borderWidth: 1, borderColor: c.line },
+  logsT: { fontFamily: f.bold, fontSize: 13, color: c.ink },
+  lWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20 },
+  lBox: { backgroundColor: c.card, borderRadius: 28, padding: 18, gap: 10, borderWidth: 1, borderColor: c.line },
+  lHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  lRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
+  lDate: { flex: 1, fontFamily: f.medium, fontSize: 15, color: c.ink },
+  lKg: { fontFamily: f.medium, fontSize: 15, color: c.ink },
+  lDateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: c.tint, borderRadius: 20, paddingHorizontal: 16, height: 38 },
+  lDateT: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
+  lKgBox: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', backgroundColor: c.page, borderRadius: 22, paddingVertical: 8, gap: 6 },
+  lKgIn: { fontFamily: f.extra, fontSize: 34, color: c.ink, minWidth: 100, textAlign: 'right', paddingVertical: 0 },
+  lUnit: { fontFamily: f.bold, fontSize: 16, color: c.muted },
+  lCta: { height: 50, borderRadius: 25, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
+  lCtaT: { fontFamily: f.bold, fontSize: 16, color: c.lime },
   card: { marginHorizontal: 10, marginBottom: 8, borderRadius: 26, padding: 16 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardT: { fontFamily: f.extra, fontSize: 18, color: c.ink, letterSpacing: -0.3 },

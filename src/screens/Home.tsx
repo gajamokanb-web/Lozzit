@@ -8,7 +8,7 @@ import { addDays, entryBase, fmt, fmtDay, MEALS, parseKey, scaleEntry, sum, targ
 import { useStore } from '../store';
 import { FoodIcon } from '../foodIcons';
 import { FactorModal } from './Factor';
-import { BlockMenu, MealSummary } from './BlockMenu';
+import { BlockMenu, MealPick, MealSummary } from './BlockMenu';
 import { Calendar } from './Calendar';
 import { useSteps } from '../steps';
 import { card, Icon, P, Screen } from '../ui';
@@ -57,7 +57,6 @@ function MealBlock({ label, entries, icons, open, onToggle, onAdd, onMenu, onEdi
         <Icon d={open ? P.chevDown : P.next} size={20} color={c.muted} />
         <View style={{ flex: 1 }}>
           <Text style={s.blockName}>{label}</Text>
-          <Text style={s.blockSub}>{entries.length === 1 ? '1 item' : `${entries.length} items`}</Text>
         </View>
         <Text style={s.blockKcal}>{fmt(total)} kcal</Text>
         <Pressable ref={dots} onPress={() => dots.current?.measureInWindow((_x, y, _w, h) => onMenu(y + h))} style={s.dots} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Options ${label}`}>
@@ -106,6 +105,8 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
   const [menu, setMenu] = useState<{ blk: Blk; y: number } | null>(null);
   const [summary, setSummary] = useState<Blk | null>(null);
   const [copyBlk, setCopyBlk] = useState<Blk | null>(null);
+  const [copyDay, setCopyDay] = useState<string | null>(null);
+  const copyPicked = React.useRef(false);
   const icons = useMemo(() => Object.fromEntries(Object.values(state.foods).map((x) => [x.key, x.icon])), [state.foods]);
   const profile = state.profile!;
   const t = useMemo(() => targets(profile), [profile]);
@@ -252,15 +253,23 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
       />
       <MealSummary visible={!!summary} label={summary?.label ?? ''} entries={summary?.entries ?? []} budget={t.kcal} onClose={() => setSummary(null)} />
       <Calendar
-        visible={!!copyBlk}
+        visible={!!copyBlk && !copyDay}
         selected={selected}
         marks={new Set(state.entries.map((e) => e.day))}
         title={copyBlk ? `Copy ${copyBlk.label} to…` : undefined}
-        onPick={(k) => {
-          if (copyBlk) { copyBlk.entries.forEach(({ id: _id, ...e }) => addEntry({ ...e, day: k })); onSelect(k); }
-          setCopyBlk(null);
+        onPick={(k) => { copyPicked.current = true; setCopyDay(k); }}
+        onClose={() => { if (copyPicked.current) copyPicked.current = false; else setCopyBlk(null); }}
+      />
+      <MealPick
+        visible={!!copyBlk && !!copyDay}
+        title="Copy into which meal?"
+        meals={shown.map((m) => ({ key: m.key, label: m.label }))}
+        initial={copyBlk?.key}
+        onClose={() => { setCopyBlk(null); setCopyDay(null); }}
+        onPick={(meal) => {
+          if (copyBlk && copyDay) { copyBlk.entries.forEach(({ id: _id, ...e }) => addEntry({ ...e, day: copyDay, meal })); onSelect(copyDay); }
+          setCopyBlk(null); setCopyDay(null);
         }}
-        onClose={() => setCopyBlk(null)}
       />
       <FactorModal
         visible={!!factory}
@@ -323,7 +332,7 @@ const mkStyles = () => StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, marginTop: 2 },
   itemName: { fontFamily: f.semi, fontSize: 14, color: c.ink },
   itemSub: { fontFamily: f.regular, fontSize: 12, color: c.muted, marginTop: 1 },
-  itemKcal: { fontFamily: f.bold, fontSize: 14, color: c.ink, marginLeft: 10 },
+  itemKcal: { fontFamily: f.regular, fontSize: 14, color: c.ink, marginLeft: 10 },
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
   addBtn: { backgroundColor: c.tint, borderRadius: 22, paddingVertical: 9, paddingHorizontal: 24 },
   addText: { fontFamily: f.bold, fontSize: 15, color: c.limeText },

@@ -6,7 +6,7 @@ import { exportBackup, pickBackup } from '../backup';
 import { c, f, onTheme } from '../theme';
 import { ACTIVITY, autoBudget, autoMacros, budgetFor, dayKey, fmt, fmtDay, MEALS, METHODS, resolveMacros, targets, type MacroRule } from '../domain';
 import { useStore } from '../store';
-import { card, Icon, P, Screen, Title } from '../ui';
+import { card, Icon, P, Screen, Title, KbView } from '../ui';
 import { enableSteps, listStepSources, sourceName } from '../steps';
 
 /** Logs: every day with something logged, newest first. Tap a day to open it on the dashboard. */
@@ -202,7 +202,7 @@ export function Profile() {
         <Row title="Saturated fat" sub="under Fat" value={st.showSat} onChange={(v) => setSettings({ showSat: v })} />
       </View>
       <Modal visible={!!edit} transparent animationType="fade" onRequestClose={() => setEdit(null)} statusBarTranslucent>
-        <View style={s.mWrap}>
+        <KbView style={s.mWrap}>
           <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={() => setEdit(null)} />
           {edit && (
             <View style={s.mCard}>
@@ -289,7 +289,7 @@ export function Profile() {
               )}
             </View>
           )}
-        </View>
+        </KbView>
       </Modal>
       <Text style={s.credit}>Food data: Anses Ciqual 2025 (Licence Ouverte Etalab 2.0) · Open Food Facts (ODbL)</Text>
       <Modal visible={picker} transparent animationType="fade" onRequestClose={() => setPicker(false)} statusBarTranslucent>

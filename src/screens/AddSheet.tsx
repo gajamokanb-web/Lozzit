@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing,  Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f, onTheme } from '../theme';
-import { MEALS, type MealKey } from '../domain';
+import { fmtDay, MEALS, type MealKey } from '../domain';
+import { Calendar } from './Calendar';
 import { useStore } from '../store';
-import { Disc, Icon, MealIcon, P } from '../ui';
+import { Disc, Icon, MealIcon, P, KbView } from '../ui';
 
 export type SheetView = 'grid' | 'water' | 'weight';
 type View_ = SheetView;
@@ -16,6 +17,8 @@ export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onM
   const { bottom } = useSafeAreaInsets();
   const [view, setView] = useState<View_>('grid');
   const [kg, setKg] = useState('');
+  const [wDay, setWDay] = useState(day);
+  const [cal, setCal] = useState(false);
 
   // slide up from the bottom, fade the backdrop; reverse on close
   const [show, setShow] = useState(false);
@@ -39,11 +42,12 @@ export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onM
 
   useEffect(() => {
     if (!visible) return;
-    setView(start);
+    setView(start); setWDay(day);
     const last = Object.keys(state.weights).sort().pop();
     setKg(String(state.weights[day] ?? (last ? state.weights[last] : state.profile?.weightKg ?? '')));
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const pickDay = (k: string) => { setWDay(k); if (state.weights[k] != null) setKg(String(state.weights[k])); };
   const drops = state.water[day] ?? 0;
   const kgNum = parseFloat(kg.replace(',', '.'));
   const kgOk = Number.isFinite(kgNum) && kgNum >= 20 && kgNum <= 400;
@@ -57,9 +61,10 @@ export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onM
 
   return (
     <Modal visible={show} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KbView style={{ flex: 1 }}>
         <Animated.View style={[s.backdrop, { opacity: fade }]}>
           <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Close" />
+          <Calendar visible={cal} selected={wDay} marks={new Set(Object.keys(state.weights))} title="Date of the weigh-in" onPick={pickDay} onClose={() => setCal(false)} />
         </Animated.View>
         <Animated.View style={[s.sheet, { paddingBottom: Math.max(bottom, 12) + 14, transform: [{ translateY: y }] }]}>
           {view === 'grid' && (
@@ -97,16 +102,20 @@ export function AddSheet({ visible, start = 'grid', day, suggested, onClose, onM
           {view === 'weight' && (
             <View style={s.panel}>
               <Text style={s.panelH}>Weight</Text>
+              <Pressable onPress={() => setCal(true)} style={s.dateBtn} accessibilityRole="button" accessibilityLabel="Choose the date">
+                <Icon d={P.calendar} size={16} color={c.limeText} sw={2.2} />
+                <Text style={s.dateT}>{fmtDay(wDay)}</Text>
+              </Pressable>
               <View style={s.weightBox}>
                 <TextInput style={s.weightIn} value={kg} onChangeText={setKg} keyboardType="decimal-pad" maxLength={6} selectTextOnFocus selectionColor={c.lime} accessibilityLabel="Weight in kilograms" />
                 <Text style={s.unit}>kg</Text>
               </View>
-              <Pressable onPress={() => { if (kgOk) { setWeight(day, Math.round(kgNum * 10) / 10); onClose(); } }} disabled={!kgOk} style={[s.cta, !kgOk && { opacity: 0.35 }]}><Text style={s.ctaT}>Save</Text></Pressable>
+              <Pressable onPress={() => { if (kgOk) { setWeight(wDay, Math.round(kgNum * 10) / 10); onClose(); } }} disabled={!kgOk} style={[s.cta, !kgOk && { opacity: 0.35 }]}><Text style={s.ctaT}>Save</Text></Pressable>
               <Pressable onPress={() => setView('grid')} style={s.linkW}><Text style={s.link}>Back</Text></Pressable>
             </View>
           )}
         </Animated.View>
-      </KeyboardAvoidingView>
+      </KbView>
     </Modal>
   );
 }
@@ -127,6 +136,8 @@ const mkStyles = () => StyleSheet.create({
   bigNum: { fontFamily: f.extra, fontSize: 38, color: c.ink, letterSpacing: -1, lineHeight: 48 },
   unit: { fontFamily: f.semi, fontSize: 16, color: c.muted, letterSpacing: 0 },
   sub: { fontFamily: f.medium, fontSize: 13, color: c.muted },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: c.tint, borderRadius: 20, paddingHorizontal: 16, height: 38, marginBottom: 10 },
+  dateT: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
   weightBox: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', backgroundColor: c.page, borderRadius: 24, paddingVertical: 10, gap: 6 },
   weightIn: { fontFamily: f.extra, fontSize: 38, color: c.ink, letterSpacing: -1, minWidth: 100, textAlign: 'right', paddingVertical: 0 },
   cta: { height: 56, borderRadius: 28, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },

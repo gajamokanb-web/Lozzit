@@ -37,7 +37,7 @@ export function ConfirmHost() {
                 </Pressable>
               )}
               <Pressable onPress={() => close(true)} style={[s.btn, { backgroundColor: p.danger ? c.red : c.btn }]} accessibilityRole="button">
-                <Text style={[s.btnT, { color: p.danger ? '#fff' : c.onLime }]}>{p.confirmText ?? 'OK'}</Text>
+                <Text style={[s.btnT, { color: p.danger ? '#fff' : c.lime }]}>{p.confirmText ?? 'OK'}</Text>
               </Pressable>
             </View>
           </View>

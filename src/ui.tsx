@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from './i18n';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,8 @@ export const P = {
   user: ['M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2', 'M12 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0'],
   scan: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M7 12h10'],
   flame: ['M12 3q1 4 4 6.5t3 5.5a7 7 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'],
+  calendar: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z'],
+  list: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3 6h.01', 'M3 12h.01', 'M3 18h.01'],
   search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z', 'm21 21-4.3-4.3'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
   plus: ['M5 12h14', 'M12 5v14'],
@@ -73,12 +75,37 @@ onTheme(() => { card.backgroundColor = c.card; card.borderColor = c.line; });
 export type Tab = 'home' | 'stats' | 'recipes' | 'profile';
 
 /** Scrolling page that leaves room for the status bar and the floating nav. */
+/** How far the soft keyboard covers the bottom of the referenced view (0 when the window already resizes). */
+export function useKbOverlap() {
+  const ref = useRef<View>(null);
+  const [pad, setPad] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      ref.current?.measureInWindow((_x, y, _w, h) => setPad(Math.max(0, Math.round(y + h - e.endCoordinates.screenY))));
+    });
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setPad(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return { ref, pad };
+}
+
+/** Container that keeps its content above the keyboard (replacement for KeyboardAvoidingView, which does nothing on Android here). */
+export function KbView({ style, children }: { style?: any; children: React.ReactNode }) {
+  const { ref, pad } = useKbOverlap();
+  const fl = StyleSheet.flatten(style) ?? {};
+  const base = Number(fl.paddingBottom ?? fl.padding ?? 0);
+  return <View ref={ref} collapsable={false} style={[style, { paddingBottom: base + pad }]}>{children}</View>;
+}
+
 export function Screen({ children }: { children: React.ReactNode }) {
   const { top } = useSafeAreaInsets();
+  const { ref, pad } = useKbOverlap();
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: top + 12, paddingBottom: 170 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <View ref={ref} collapsable={false} style={{ flex: 1, paddingBottom: pad }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: top + 12, paddingBottom: pad ? 24 : 170 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
+    </View>
   );
 }
 

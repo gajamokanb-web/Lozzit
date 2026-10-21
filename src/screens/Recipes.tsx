@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Keyboard,  Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { askConfirm } from '../dialog';
 import { Text, TextInput, tr } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { FoodIcon } from '../foodIcons';
 import { convertRecipe, DRAFT, newId, type Converted, type Ingredient, type Recipe } from '../recipes';
 import { DEFAULT_MODEL } from '../vision';
 import { useStore } from '../store';
-import { card, Disc, Icon, P, Screen, Title } from '../ui';
+import { card, Disc, Icon, P, Screen, Title, KbView } from '../ui';
 
 export type RecipeRequest = { n: number; kind: 'new' | 'import'; cat?: string } | null;
 /** Opens the food search / scan / create screen to choose a food; `onPick` receives it. */
@@ -58,7 +58,7 @@ export function Recipes({ request, onConsumed, onPickFood }: { request: RecipeRe
   const groups = useMemo(() => {
     const k = q.trim().toLowerCase();
     return recipeCats
-      .map((cat) => ({ cat, list: recipes.filter((r) => r.cat === cat && (!k || (r.title || '').toLowerCase().includes(k))) }))
+      .map((cat) => ({ cat, list: recipes.filter((r) => r.cat === cat && (!k || (r.title || '').toLowerCase().includes(k) || r.ingredients.some((i) => i.name.toLowerCase().includes(k)))) }))
       .filter((g) => !k || g.list.length > 0);
   }, [recipes, recipeCats, q]);
 
@@ -72,7 +72,7 @@ export function Recipes({ request, onConsumed, onPickFood }: { request: RecipeRe
         </View>
       </View>
       {searching && (
-        <TextInput style={[s.field, s.searchIn]} value={q} onChangeText={setQ} placeholder="Search a recipe" placeholderTextColor={c.soft} selectionColor={c.lime} autoFocus accessibilityLabel="Search recipes" />
+        <TextInput style={[s.field, s.searchIn]} value={q} onChangeText={setQ} placeholder="Search a recipe or an ingredient" placeholderTextColor={c.soft} selectionColor={c.lime} autoFocus accessibilityLabel="Search recipes" />
       )}
       {recipes.length === 0 && <Text style={s.empty}>No recipes yet. Tap the green + to add one or to import one from Instagram.</Text>}
       {searching && q.trim() && groups.length === 0 && <Text style={s.empty}>No recipe found.</Text>}
@@ -176,7 +176,7 @@ function ImportModal({ visible, onClose, onDone }: { visible: boolean; onClose: 
   };
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={s.mWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KbView style={s.mWrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={busy ? undefined : onClose} accessibilityLabel="Close" />
         <View style={s.mCard}>
           <Text style={s.mTitle}>Import from Instagram</Text>
@@ -188,7 +188,7 @@ function ImportModal({ visible, onClose, onDone }: { visible: boolean; onClose: 
           </Pressable>
           <Pressable onPress={onClose} disabled={busy} style={{ alignSelf: 'center', padding: 6 }} accessibilityRole="button"><Text style={s.link}>Cancel</Text></Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KbView>
     </Modal>
   );
 }
@@ -204,7 +204,7 @@ function IngredientDialog({ ing, onClose, onSave, onDelete }: { ing: Ingredient 
   const ok = name.trim().length > 0 && Number.isFinite(gv) && gv >= 0;
   return (
     <Modal visible={!!ing} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={s.mWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KbView style={s.mWrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
         <View style={s.mCard}>
           <Text style={s.mTitle}>Ingredient</Text>
@@ -224,7 +224,7 @@ function IngredientDialog({ ing, onClose, onSave, onDelete }: { ing: Ingredient 
             <Pressable onPress={() => ing && ok && onSave({ ...ing, name: name.trim(), g: Math.round(gv * 10) / 10 })} disabled={!ok} style={[s.cta, { flex: 1, marginTop: 0 }, !ok && { opacity: 0.4 }]} accessibilityRole="button"><Text style={s.ctaT}>Save</Text></Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KbView>
     </Modal>
   );
 }
@@ -252,6 +252,20 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
   const [edit, setEdit] = useState<Ingredient | null>(null);
   const [right, setRight] = useState<'orig' | 'conv'>('orig');
   const [serv, setServ] = useState(1);
+  const [ratio, setRatio] = useState(0.5);
+  const ratioRef = useRef(0.5);
+  const colsW = useRef(340);
+  const startR = useRef(0.5);
+  const pan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => { startR.current = ratioRef.current; },
+    onPanResponderMove: (_e, g) => {
+      const r = Math.max(0.22, Math.min(0.78, startR.current + g.dx / Math.max(colsW.current, 1)));
+      ratioRef.current = r; setRatio(r);
+    },
+  })).current;
   useEffect(() => {
     if (!data) return;
     setTitle(data.conv.title);
@@ -272,23 +286,26 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
           <Pressable onPress={onClose} style={s.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back"><Icon d={P.back} size={22} /></Pressable>
           <Text style={s.fTitle}>Check the recipe</Text>
         </View>
-        <TextInput style={[s.field, { marginHorizontal: 16 }]} value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={c.soft} selectionColor={c.lime} accessibilityLabel="Recipe title" />
-        <View style={{ marginHorizontal: 16, marginTop: 8 }}><Servings value={serv} onChange={setServ} /></View>
-        <View style={s.cols}>
-          <View style={[s.col, card]}>
+        <TextInput style={[s.field, { marginHorizontal: 8 }]} value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={c.soft} selectionColor={c.lime} accessibilityLabel="Recipe title" />
+        <View style={{ marginHorizontal: 8, marginTop: 8 }}><Servings value={serv} onChange={setServ} /></View>
+        <View style={s.cols} onLayout={(e) => { colsW.current = e.nativeEvent.layout.width; }}>
+          <View style={[s.col, card, { flex: ratio }]}>
             <Text style={s.colH}>Ingredients (g)</Text>
             <ScrollView contentContainerStyle={{ paddingBottom: 8 }} showsVerticalScrollIndicator>
               {ings.map((i) => (
                 <Pressable key={i.id} onPress={() => setEdit(i)} style={s.ing} accessibilityRole="button" accessibilityLabel={`Edit ${i.name}`}>
-                  <Text style={s.ingName}>{i.name}</Text>
-                  <Text style={s.ingG}>{`${i.g} g`}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                    <Text style={[s.ingName, { flex: 1 }]}>{i.name}</Text>
+                    <Text style={s.ingG}>{`${i.g} g`}</Text>
+                  </View>
                   {i.orig ? <Text style={s.ingO}>{i.orig}</Text> : null}
                 </Pressable>
               ))}
               <Pressable onPress={() => setEdit({ id: newId(), name: '', g: 0 })} style={s.addIng} accessibilityRole="button"><Icon d={P.plus} size={16} color={c.limeText} /><Text style={s.link}>Add</Text></Pressable>
             </ScrollView>
           </View>
-          <View style={[s.col, card]}>
+          <View {...pan.panHandlers} style={s.handle} accessibilityLabel="Resize the columns"><View style={s.handleBar} /></View>
+          <View style={[s.col, card, { flex: 1 - ratio }]}>
             <View style={s.tog}>
               {([['orig', 'Original'], ['conv', 'In grams']] as const).map(([k, l]) => (
                 <Pressable key={k} onPress={() => setRight(k)} style={[s.togB, right === k && { backgroundColor: c.btn }]} accessibilityRole="button"><Text style={[s.togT, right === k && { color: '#fff' }]}>{l}</Text></Pressable>
@@ -299,7 +316,7 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
             </ScrollView>
           </View>
         </View>
-        <View style={{ paddingHorizontal: 16, paddingBottom: Math.max(bottom, 12) + 8, gap: 6 }}>
+        <View style={{ paddingHorizontal: 12, paddingBottom: Math.max(bottom, 12) + 8, gap: 6 }}>
           <Text style={s.hint}>Tap an ingredient to fix it. The recipe is saved as a draft: link each ingredient to a food afterwards.</Text>
           <Pressable onPress={save} style={s.cta} accessibilityRole="button"><Text style={s.ctaT}>Save as draft</Text></Pressable>
         </View>
@@ -340,13 +357,13 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
   };
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={[s.full, { paddingTop: top + 8 }]}>
+      <KbView style={[s.full, { paddingTop: top + 8 }]}>
         <View style={s.fHead}>
           <Pressable onPress={onClose} style={s.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back"><Icon d={P.back} size={22} /></Pressable>
           <Text style={s.fTitle}>{isNew ? 'New recipe' : 'Recipe'}</Text>
           {!isNew && <Pressable onPress={del} style={s.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete recipe"><Icon d={P.trash} size={20} color={c.red} /></Pressable>}
         </View>
-        <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: kb ? kb + 24 : Math.max(bottom, 12) + 90 }} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: kb ? 24 : Math.max(bottom, 12) + 90 }} keyboardShouldPersistTaps="handled">
           <TextInput style={[s.field, s.fieldBig]} value={r.title} onChangeText={(v) => setR({ ...r, title: v })} placeholder="Title" placeholderTextColor={c.soft} selectionColor={c.lime} accessibilityLabel="Recipe title" />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipsRow} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}>
             {state.recipeCats.map((cat) => (
@@ -411,7 +428,7 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
           onSave={(i) => { patchIng(i); setEdit(null); }}
           onDelete={() => { setR({ ...r, ingredients: r.ingredients.filter((x) => x.id !== edit?.id) }); setEdit(null); }}
         />
-      </View>
+      </KbView>
     </Modal>
   );
 }
@@ -439,7 +456,7 @@ function CatManager({ visible, onClose }: { visible: boolean; onClose: () => voi
   };
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={s.mWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KbView style={s.mWrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
         <View style={s.mCard}>
           <Text style={s.mTitle}>Recipe categories</Text>
@@ -457,7 +474,7 @@ function CatManager({ visible, onClose }: { visible: boolean; onClose: () => voi
           </ScrollView>
           <Pressable onPress={save} style={s.cta} accessibilityRole="button"><Text style={s.ctaT}>Save</Text></Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KbView>
     </Modal>
   );
 }
@@ -472,8 +489,8 @@ const mkStyles = () => StyleSheet.create({
   catName: { flex: 1, fontFamily: f.extra, fontSize: 17, color: c.ink },
   catCount: { fontFamily: f.bold, fontSize: 14, color: c.muted },
   catEmpty: { fontFamily: f.medium, fontSize: 13, color: c.soft, paddingBottom: 10 },
-  recipe: { paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rTitle: { fontFamily: f.bold, fontSize: 16, color: c.ink },
+  recipe: { paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rTitle: { fontFamily: f.regular, fontSize: 16, color: c.ink },
   rSub: { fontFamily: f.medium, fontSize: 12.5, color: c.muted, marginTop: 2 },
   badge: { fontFamily: f.bold, fontSize: 11, color: '#C13584', backgroundColor: '#C1358422', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden' },
   backdrop: { flex: 1, backgroundColor: 'rgba(21,32,15,0.45)' },
@@ -500,12 +517,14 @@ const mkStyles = () => StyleSheet.create({
   fHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 10 },
   fTitle: { flex: 1, fontFamily: f.extra, fontSize: 22, color: c.ink },
   back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  cols: { flex: 1, flexDirection: 'row', gap: 10, padding: 16 },
-  col: { flex: 1, borderRadius: 20, padding: 12 },
+  cols: { flex: 1, flexDirection: 'row', paddingHorizontal: 6, paddingVertical: 10 },
+  col: { borderRadius: 18, padding: 8 },
+  handle: { width: 22, alignItems: 'center', justifyContent: 'center' },
+  handleBar: { width: 6, height: 44, borderRadius: 3, backgroundColor: c.line },
   colH: { fontFamily: f.extra, fontSize: 14, color: c.ink, marginBottom: 8 },
   ing: { paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: c.line },
-  ingName: { fontFamily: f.bold, fontSize: 14.5, color: c.ink },
-  ingG: { fontFamily: f.extra, fontSize: 14, color: c.limeText, marginTop: 1 },
+  ingName: { fontFamily: f.regular, fontSize: 14.5, color: c.ink },
+  ingG: { fontFamily: f.regular, fontSize: 14, color: c.ink },
   ingO: { fontFamily: f.medium, fontSize: 11.5, color: c.muted, marginTop: 1 },
   addIng: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10 },
   tog: { flexDirection: 'row', gap: 4, marginBottom: 8 },

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {  Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f, onTheme } from '../theme';
 import { ACTIVITY, fmt, targets, type Profile, type Sex } from '../domain';
-import { card, Icon, P } from '../ui';
+import { card, Icon, P, KbView } from '../ui';
 
 const num = (t: string) => parseFloat(t.replace(',', '.'));
 const inRange = (t: string, lo: number, hi: number) => {
@@ -70,7 +70,7 @@ export function Onboarding({ onDone }: { onDone: (p: Profile) => void }) {
   const titles = ['What should we call you?', 'About you', 'Your numbers', 'How active are you?'];
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.page }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KbView style={{ flex: 1, backgroundColor: c.page }}>
       <View style={{ paddingTop: top + 12, paddingHorizontal: 20 }}>
         <View style={s.topRow}>
           <Pressable onPress={() => setStep(Math.max(0, step - 1))} style={[s.back, step === 0 && { opacity: 0 }]} disabled={step === 0} accessibilityLabel="Back">
@@ -124,7 +124,7 @@ export function Onboarding({ onDone }: { onDone: (p: Profile) => void }) {
           <Text style={s.ctaText}>{step === 3 ? "Let's go" : 'Continue'}</Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </KbView>
   );
 }
 
