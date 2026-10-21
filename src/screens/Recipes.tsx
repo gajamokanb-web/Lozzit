@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput, tr } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f, onTheme } from '../theme';
 import { fmt } from '../domain';
-import { searchCiqual, searchMine, type Food } from '../foods';
+import type { Food } from '../foods';
 import { FoodIcon } from '../foodIcons';
 import { convertRecipe, DRAFT, newId, type Converted, type Ingredient, type Recipe } from '../recipes';
 import { DEFAULT_MODEL } from '../vision';
@@ -12,6 +12,8 @@ import { useStore } from '../store';
 import { card, Disc, Icon, P, Screen, Title } from '../ui';
 
 export type RecipeRequest = { n: number; kind: 'new' | 'import'; cat?: string } | null;
+/** Opens the food search / scan / create screen to choose a food; `onPick` receives it. */
+export type PickFood = (o: { query?: string; scan?: boolean; create?: boolean; onPick: (fd: Food) => void }) => void;
 
 const per100 = (fd: Food | undefined, g: number) => (fd ? { kcal: (fd.per.kcal * g) / 100, p: (fd.per.p * g) / 100, c: (fd.per.c * g) / 100, f: (fd.per.f * g) / 100 } : null);
 
@@ -35,7 +37,7 @@ const catBg = (cat: string) => CAT_BG[cat] ?? '#5B5BD6';
 
 /* ───────────────────────────── list screen ───────────────────────────── */
 
-export function Recipes({ request }: { request: RecipeRequest }) {
+export function Recipes({ request, onConsumed, onPickFood }: { request: RecipeRequest; onConsumed: () => void; onPickFood: PickFood }) {
   const { state } = useStore();
   const { recipes, recipeCats } = state;
   const [open, setOpen] = useState<Recipe | null>(null);
@@ -46,7 +48,8 @@ export function Recipes({ request }: { request: RecipeRequest }) {
   useEffect(() => {
     if (!request) return;
     if (request.kind === 'import') setImporting(true);
-    else setOpen({ id: newId(), title: '', cat: request.cat ?? recipeCats[0], ingredients: [], steps: '', created: Date.now() });
+    else setOpen({ id: newId(), title: '', cat: request.cat ?? recipeCats[0], ingredients: [], steps: '', servings: 1, created: Date.now() });
+    onConsumed(); // handled once: otherwise coming back to this tab would re-open the popup
   }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = useMemo(() => recipeCats.map((cat) => ({ cat, list: recipes.filter((r) => r.cat === cat) })), [recipes, recipeCats]);
@@ -83,7 +86,7 @@ export function Recipes({ request }: { request: RecipeRequest }) {
       ))}
       <ImportModal visible={importing} onClose={() => setImporting(false)} onDone={(text, conv) => { setImporting(false); setReview({ text, conv }); }} />
       <ReviewModal data={review} onClose={() => setReview(null)} onSaved={(r) => { setReview(null); setOpen(r); }} />
-      <RecipeDetail recipe={open} onClose={() => setOpen(null)} />
+      <RecipeDetail recipe={open} onClose={() => setOpen(null)} onPickFood={onPickFood} />
       <CatManager visible={cats} onClose={() => setCats(false)} />
     </Screen>
   );
@@ -95,10 +98,30 @@ export function Recipes({ request }: { request: RecipeRequest }) {
 export function RecipeSheet({ visible, onClose, onNew, onImport }: { visible: boolean; onClose: () => void; onNew: (cat: string) => void; onImport: () => void }) {
   const { state } = useStore();
   const { bottom } = useSafeAreaInsets();
+  // the sheet slides up while the backdrop only fades (Modal's own "slide" would drag the dark backdrop up too)
+  const [show, setShow] = useState(false);
+  const y = useRef(new Animated.Value(520)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) {
+      setShow(true);
+      y.setValue(520); fade.setValue(0);
+      Animated.parallel([
+        Animated.timing(y, { toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ]).start();
+    } else if (show) {
+      Animated.parallel([
+        Animated.timing(y, { toValue: 520, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start(() => setShow(false));
+    }
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={s.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <View style={[s.sheet, { paddingBottom: Math.max(bottom, 16) + 12 }]}>
+    <Modal visible={show} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Animated.View style={[StyleSheet.absoluteFill, s.backdrop, { opacity: fade }]} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+      <Animated.View style={[s.sheet, { paddingBottom: Math.max(bottom, 16) + 12, transform: [{ translateY: y }] }]}>
         <View style={s.grab} />
         <Text style={s.sheetT}>Add a recipe</Text>
         <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 4 }}>
@@ -120,7 +143,7 @@ export function RecipeSheet({ visible, onClose, onNew, onImport }: { visible: bo
             </Pressable>
           ))}
         </ScrollView>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -168,6 +191,7 @@ function ImportModal({ visible, onClose, onDone }: { visible: boolean; onClose: 
 /* ───────────────────────────── ingredient dialog ───────────────────────────── */
 
 function IngredientDialog({ ing, onClose, onSave, onDelete }: { ing: Ingredient | null; onClose: () => void; onSave: (i: Ingredient) => void; onDelete: () => void }) {
+  const { state } = useStore();
   const [name, setName] = useState('');
   const [g, setG] = useState('');
   useEffect(() => { if (ing) { setName(ing.name); setG(ing.g ? String(ing.g) : ''); } }, [ing]);
@@ -180,6 +204,12 @@ function IngredientDialog({ ing, onClose, onSave, onDelete }: { ing: Ingredient 
         <View style={s.mCard}>
           <Text style={s.mTitle}>Ingredient</Text>
           {ing?.orig ? <Text style={s.hint}>{`In the post: ${ing.orig}`}</Text> : null}
+          {ing?.fk && state.foods[ing.fk] ? (
+            <View style={s.linked}>
+              <Text style={[s.hint, { flex: 1 }]} numberOfLines={1}>{`Linked to ${state.foods[ing.fk].name}`}</Text>
+              <Pressable onPress={() => onSave({ ...ing, name: name.trim() || ing.name, g: Number.isFinite(gv) ? gv : ing.g, fk: undefined })} hitSlop={8} accessibilityRole="button"><Text style={s.link}>Unlink</Text></Pressable>
+            </View>
+          ) : null}
           <Text style={s.fieldL}>Name</Text>
           <TextInput style={s.field} value={name} onChangeText={setName} selectionColor={c.lime} accessibilityLabel="Ingredient name" />
           <Text style={s.fieldL}>Quantity (g)</Text>
@@ -194,6 +224,19 @@ function IngredientDialog({ ing, onClose, onSave, onDelete }: { ing: Ingredient 
   );
 }
 
+function Servings({ value, onChange }: { value: number | undefined; onChange: (n: number) => void }) {
+  const v = value && value > 0 ? value : 1;
+  const set = (n: number) => onChange(Math.max(1, Math.min(99, Math.round(n))));
+  return (
+    <View style={s.servRow}>
+      <Text style={s.servL}>Servings</Text>
+      <Pressable onPress={() => set(v - 1)} style={s.servB} hitSlop={6} accessibilityRole="button" accessibilityLabel="Fewer servings"><Icon d={P.minus} size={18} /></Pressable>
+      <TextInput style={s.servIn} value={String(v)} onChangeText={(t) => { const n = parseInt(t.replace(/\D/g, ''), 10); if (Number.isFinite(n)) set(n); }} keyboardType="number-pad" maxLength={2} selectTextOnFocus selectionColor={c.lime} accessibilityLabel="Servings" />
+      <Pressable onPress={() => set(v + 1)} style={s.servB} hitSlop={6} accessibilityRole="button" accessibilityLabel="More servings"><Icon d={P.plus} size={18} /></Pressable>
+    </View>
+  );
+}
+
 /* ───────────────────────────── review (2 columns) ───────────────────────────── */
 
 function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: Converted } | null; onClose: () => void; onSaved: (r: Recipe) => void }) {
@@ -203,15 +246,17 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
   const [ings, setIngs] = useState<Ingredient[]>([]);
   const [edit, setEdit] = useState<Ingredient | null>(null);
   const [right, setRight] = useState<'orig' | 'conv'>('orig');
+  const [serv, setServ] = useState(1);
   useEffect(() => {
     if (!data) return;
     setTitle(data.conv.title);
+    setServ(Math.round(data.conv.servings ?? 1) || 1);
     setIngs(data.conv.ingredients.map((x) => ({ id: newId(), name: x.name, g: x.g, orig: x.original })));
     setRight('orig');
   }, [data]);
   const save = () => {
     if (!data) return;
-    const r: Recipe = { id: newId(), title: title.trim() || 'Recipe', cat: DRAFT, ingredients: ings, steps: data.conv.recipeGrams, original: data.text, source: 'instagram', servings: data.conv.servings, created: Date.now() };
+    const r: Recipe = { id: newId(), title: title.trim() || 'Recipe', cat: DRAFT, ingredients: ings, steps: data.conv.recipeGrams, original: data.text, source: 'instagram', servings: serv, created: Date.now() };
     saveRecipe(r);
     onSaved(r);
   };
@@ -223,6 +268,7 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
           <Text style={s.fTitle}>Check the recipe</Text>
         </View>
         <TextInput style={[s.field, { marginHorizontal: 16 }]} value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={c.soft} selectionColor={c.lime} accessibilityLabel="Recipe title" />
+        <View style={{ marginHorizontal: 16, marginTop: 8 }}><Servings value={serv} onChange={setServ} /></View>
         <View style={s.cols}>
           <View style={[s.col, card]}>
             <Text style={s.colH}>Ingredients (g)</Text>
@@ -265,12 +311,11 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
 
 /* ───────────────────────────── recipe detail / editor ───────────────────────────── */
 
-function RecipeDetail({ recipe, onClose }: { recipe: Recipe | null; onClose: () => void }) {
-  const { state, saveRecipe, removeRecipe, saveFood } = useStore();
+function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; onClose: () => void; onPickFood: PickFood }) {
+  const { state, saveRecipe, removeRecipe } = useStore();
   const { top, bottom } = useSafeAreaInsets();
   const [r, setR] = useState<Recipe | null>(null);
   const [edit, setEdit] = useState<Ingredient | null>(null);
-  const [pick, setPick] = useState<Ingredient | null>(null);
   const [showOrig, setShowOrig] = useState(false);
   useEffect(() => { setR(recipe); setShowOrig(false); }, [recipe]);
   if (!r) return <Modal visible={false} />;
@@ -304,8 +349,10 @@ function RecipeDetail({ recipe, onClose }: { recipe: Recipe | null; onClose: () 
           <View style={[s.sumCard, { backgroundColor: c.lime }]}>
             <Text style={s.sumBig}>{fmt(t.kcal)}<Text style={s.sumUnit}> kcal</Text></Text>
             <Text style={s.sumLine}>{`${Math.round(t.p)}g protein · ${Math.round(t.c)}g carbs · ${Math.round(t.f)}g fat`}</Text>
+            {(r.servings ?? 1) > 1 && t.linked > 0 ? <Text style={s.sumLine}>{`${fmt(t.kcal / (r.servings ?? 1))} kcal per serving`}</Text> : null}
             <Text style={s.sumLine}>{r.ingredients.length === 0 ? 'Add ingredients to see the nutrition.' : `${t.linked} of ${r.ingredients.length} ingredients linked to a food`}</Text>
           </View>
+          <Servings value={r.servings} onChange={(n) => setR({ ...r, servings: n })} />
           <Text style={s.sect}>Ingredients</Text>
           <View style={[s.listCard, card]}>
             {r.ingredients.map((i, k) => {
@@ -317,14 +364,18 @@ function RecipeDetail({ recipe, onClose }: { recipe: Recipe | null; onClose: () 
                     <Text style={s.ingName}>{i.name}</Text>
                     <Text style={s.rSub}>{`${i.g} g${i.orig ? ` · ${i.orig}` : ''}`}</Text>
                   </Pressable>
-                  <Pressable onPress={() => setPick(i)} style={[s.linkBtn, fd && { backgroundColor: c.tint }]} accessibilityRole="button" accessibilityLabel={`Link ${i.name}`}>
+                  <Pressable onPress={() => onPickFood({ query: i.name, onPick: (fd) => patchIng({ ...i, fk: fd.key }) })} style={[s.linkBtn, fd && { backgroundColor: c.tint }]} accessibilityRole="button" accessibilityLabel={`Link ${i.name}`}>
                     {fd ? <FoodIcon name={fd.name} icon={fd.icon} size={20} /> : <Icon d={P.plus} size={14} color={c.limeText} sw={2.6} />}
                     <Text style={s.linkT} numberOfLines={1}>{fd ? `${fd.name} · ${fmt(n!.kcal)}` : 'Link to food'}</Text>
                   </Pressable>
                 </View>
               );
             })}
-            <Pressable onPress={() => setEdit({ id: newId(), name: '', g: 0 })} style={[s.addIng, { padding: 14 }]} accessibilityRole="button"><Icon d={P.plus} size={16} color={c.limeText} /><Text style={s.link}>Add an ingredient</Text></Pressable>
+            <View style={[s.addRow, r.ingredients.length > 0 && { borderTopWidth: 1, borderTopColor: c.line }]}>
+              <Pressable onPress={() => onPickFood({ onPick: (fd) => setEdit({ id: newId(), name: fd.name, g: 100, fk: fd.key }) })} style={s.addBig} accessibilityRole="button" accessibilityLabel="Add from the food database"><Icon d={P.plus} size={16} color={c.onLime} sw={2.6} /><Text style={s.addBigT}>From the food database</Text></Pressable>
+              <Pressable onPress={() => setEdit({ id: newId(), name: '', g: 0 })} style={s.addSmall} accessibilityRole="button" accessibilityLabel="Add by name"><Text style={s.link}>By name</Text></Pressable>
+            </View>
+            <Text style={[s.hint, { paddingHorizontal: 14, paddingBottom: 12 }]}>Search the full database, your own foods, or scan a barcode / create a food if it is missing.</Text>
           </View>
           <Text style={s.sect}>Method</Text>
           <TextInput style={[s.area, { minHeight: 140 }]} value={r.steps} onChangeText={(v) => setR({ ...r, steps: v })} multiline placeholder="Steps…" placeholderTextColor={c.soft} selectionColor={c.lime} textAlignVertical="top" accessibilityLabel="Method" />
@@ -344,53 +395,6 @@ function RecipeDetail({ recipe, onClose }: { recipe: Recipe | null; onClose: () 
           onSave={(i) => { patchIng(i); setEdit(null); }}
           onDelete={() => { setR({ ...r, ingredients: r.ingredients.filter((x) => x.id !== edit?.id) }); setEdit(null); }}
         />
-        <FoodPicker
-          ing={pick}
-          onClose={() => setPick(null)}
-          onPick={(fd) => { if (pick) { saveFood(fd); patchIng({ ...pick, fk: fd.key }); } setPick(null); }}
-          onUnlink={() => { if (pick) patchIng({ ...pick, fk: undefined }); setPick(null); }}
-        />
-      </View>
-    </Modal>
-  );
-}
-
-/* ───────────────────────────── food picker ───────────────────────────── */
-
-function FoodPicker({ ing, onClose, onPick, onUnlink }: { ing: Ingredient | null; onClose: () => void; onPick: (f: Food) => void; onUnlink: () => void }) {
-  const { state } = useStore();
-  const { top, bottom } = useSafeAreaInsets();
-  const [q, setQ] = useState('');
-  useEffect(() => { if (ing) setQ(ing.name); }, [ing]);
-  const mine = useMemo(() => Object.values(state.foods), [state.foods]);
-  const results = useMemo(() => {
-    if (q.trim().length < 2) return [];
-    const m = searchMine(mine, q);
-    const keys = new Set(mine.map((x) => x.key));
-    return [...m, ...searchCiqual(q).filter((x) => !keys.has(x.key))].slice(0, 40);
-  }, [q, mine]);
-  return (
-    <Modal visible={!!ing} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={[s.full, { paddingTop: top + 8 }]}>
-        <View style={s.fHead}>
-          <Pressable onPress={onClose} style={s.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back"><Icon d={P.back} size={22} /></Pressable>
-          <Text style={s.fTitle}>Link to a food</Text>
-        </View>
-        <Text style={[s.hint, { marginHorizontal: 16 }]}>{ing ? `${ing.name} · ${ing.g} g` : ''}</Text>
-        <TextInput style={[s.field, { marginHorizontal: 16, marginTop: 6 }]} value={q} onChangeText={setQ} placeholder="Search a food" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} accessibilityLabel="Search a food" />
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: Math.max(bottom, 12) + 20 }} keyboardShouldPersistTaps="handled">
-          {ing?.fk && <Pressable onPress={onUnlink} style={[s.pRow, card]} accessibilityRole="button"><Icon d={P.x} size={18} color={c.red} /><Text style={[s.ingName, { color: c.red }]}>Remove the link</Text></Pressable>}
-          {q.trim().length >= 2 && results.length === 0 && <Text style={s.hint}>No results. Try another word, or create the food from the Add food screen.</Text>}
-          {results.map((fd) => (
-            <Pressable key={fd.key} onPress={() => onPick(fd)} style={[s.pRow, card]} accessibilityRole="button" accessibilityLabel={fd.name}>
-              <FoodIcon name={fd.name} icon={fd.icon} size={34} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.ingName} numberOfLines={2}>{fd.name}</Text>
-                <Text style={s.rSub}>{`${Math.round(fd.per.kcal)} kcal / 100 ${fd.unit}${fd.brand ? ` · ${fd.brand}` : ''}`}</Text>
-              </View>
-            </Pressable>
-          ))}
-        </ScrollView>
       </View>
     </Modal>
   );
@@ -455,7 +459,7 @@ const mkStyles = () => StyleSheet.create({
   rSub: { fontFamily: f.medium, fontSize: 12.5, color: c.muted, marginTop: 2 },
   badge: { fontFamily: f.bold, fontSize: 11, color: '#C13584', backgroundColor: '#C1358422', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden' },
   backdrop: { flex: 1, backgroundColor: 'rgba(21,32,15,0.45)' },
-  sheet: { backgroundColor: c.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 20, paddingTop: 10 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: c.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 20, paddingTop: 10 },
   grab: { alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: c.line, marginBottom: 12 },
   sheetT: { fontFamily: f.extra, fontSize: 20, color: c.ink, marginBottom: 10 },
   sRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 },
@@ -505,6 +509,15 @@ const mkStyles = () => StyleSheet.create({
   linkT: { flexShrink: 1, fontFamily: f.bold, fontSize: 12, color: c.limeText },
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, backgroundColor: c.page },
   pRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 18 },
+  linked: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  addBig: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.lime, borderRadius: 20, paddingHorizontal: 14, height: 40 },
+  addBigT: { fontFamily: f.bold, fontSize: 13.5, color: c.onLime },
+  addSmall: { paddingHorizontal: 10, height: 40, justifyContent: 'center' },
+  servRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  servL: { flex: 1, fontFamily: f.bold, fontSize: 15, color: c.ink },
+  servB: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' },
+  servIn: { minWidth: 48, textAlign: 'center', fontFamily: f.extra, fontSize: 18, color: c.ink, backgroundColor: c.page, borderRadius: 12, height: 36, paddingHorizontal: 6 },
   catEdit: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });
 let s = mkStyles();

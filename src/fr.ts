@@ -142,6 +142,9 @@ export const FR: Record<string, string> = {
   'Backup file ready.': 'Fichier de sauvegarde prêt.', 'Could not open the share sheet on this device.': 'Impossible d’ouvrir le partage sur cet appareil.', 'Could not create the backup file.': 'Impossible de créer le fichier de sauvegarde.',
   'Data imported.': 'Données importées.', 'This file is not a Lozzit backup.': 'Ce fichier n’est pas une sauvegarde Lozzit.', 'Could not read this file.': 'Impossible de lire ce fichier.',
   'This replaces everything on this phone with the content of the file.': 'Cela remplace tout ce qui est sur ce téléphone par le contenu du fichier.',
+  'Choose a food': 'Choisir un aliment', 'Check the values against the photo. You can edit them on the next screen.': 'Vérifie les valeurs avec la photo. Tu pourras les modifier à l’écran suivant.',
+  'Values per': 'Valeurs pour', Unlink: 'Délier', Servings: 'Portions', 'From the food database': 'Depuis la base d’aliments', 'By name': 'Par nom',
+  'Search the full database, your own foods, or scan a barcode / create a food if it is missing.': 'Cherche dans toute la base, tes propres aliments, ou scanne un code-barres / crée un aliment s’il manque.',
   // misc
   'Tap + to log': 'Appuie sur + pour enregistrer',
 };
@@ -189,6 +192,8 @@ export const FR_PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^In the post: (.*)$/, (q) => `Dans le post : ${q}`],
   [/^(\d+) of (\d+) ingredients linked to a food$/, (a, b) => `${a} ingrédient${+a > 1 ? 's' : ''} sur ${b} lié${+a > 1 ? 's' : ''}${+a > 1 ? 's' : ''} à un aliment`.replace('liéss','liés')],
   [/^(\d+)g protein · (\d+)g carbs · (\d+)g fat$/, (a, b, c) => `${a} g de protéines · ${b} g de glucides · ${c} g de lipides`],
+  [/^Linked to (.+)$/, (n) => `Lié à ${n}`],
+  [/^(\S+) kcal per serving$/, (n) => `${n} kcal par portion`],
   [/^New (.+)$/, (m) => `Nouveau : ${m}`],
   [/^(.*) \(custom budget set below\)$/, (m) => `${m} (budget personnalisé défini ci-dessous)`],
   [/^(\d+) y (.*)$/, (a, b) => `${a} ans ${b}`],

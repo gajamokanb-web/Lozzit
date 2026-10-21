@@ -13,8 +13,9 @@ import { useStore } from '../store';
 import { card, Icon, P } from '../ui';
 import { FactorModal } from './Factor';
 
-export type AddTarget = { meal: MealKey; day: string; editId?: string; scan?: boolean };
-type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev' | 'result';
+/** pick: choose a food for something else (e.g. a recipe) instead of logging it; the callback gets the food. */
+export type AddTarget = { meal: MealKey; day: string; editId?: string; scan?: boolean; pick?: (fd: Food) => void; query?: string; create?: boolean };
+type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev';
 type Tab = 'search' | 'mine' | 'meals';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
@@ -142,6 +143,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [nF, setNF] = useState('');
   const [nX, setNX] = useState<string[]>(['', '', '', '']);
   const [nPortion, setNPortion] = useState('');
+  const [nBasis, setNBasis] = useState('100');
   const [nCode, setNCode] = useState('');
   const [nIcon, setNIcon] = useState<string | undefined>(undefined);
   const [nIconTouched, setNIconTouched] = useState(false);
@@ -160,7 +162,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
 
   useEffect(() => {
     if (!target) return;
-    setMeal(target.meal); setQuery(''); setBusy(false); setMiss(null); setTab('search');
+    setMeal(target.meal); setQuery(target.query ?? ''); setBusy(false); setMiss(null); setTab('search');
     setQName(''); setQKcal(''); setQP(''); setQC(''); setQF(''); setQX(['', '', '', '']); setEditKey(null); setCopyDlg(null);
     scanned.current = false;
     const e = target.editId ? state.entries.find((x) => x.id === target.editId) : undefined;
@@ -172,12 +174,12 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       setMode('qty');
     } else {
       setFood(null);
-      if (target.scan) { scanned.current = false; setMode('scan'); } else setMode('main');
+      if (target.scan) { scanned.current = false; setMode('scan'); } else if (target.create) openCreate('main'); else setMode('main');
     }
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Foods already logged on this day are not offered again: tap them on the dashboard to change the quantity.
-  const todayKeys = useMemo(() => new Set(state.entries.filter((e) => e.day === target?.day).map((e) => e.fk ?? e.name)), [state.entries, target?.day]);
+  const todayKeys = useMemo(() => new Set(target?.pick ? [] : state.entries.filter((e) => e.day === target?.day).map((e) => e.fk ?? e.name)), [state.entries, target?.day, target?.pick]);
 
   /** Own database: everything saved (added, scanned, created) + foods found in older log entries. */
   const mine = useMemo(() => {
@@ -229,6 +231,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   if (!target) return null;
 
   const pick = (fd: Food) => {
+    if (target.pick) { saveFood(fd); target.pick(fd); onClose(); return; }
     setFood({ name: fd.name, brand: fd.brand, base: { ...fd.per, size: 100, unit: fd.unit }, fk: fd.key, portion: fd.portion, src: fd.src, icon: fd.icon, barcode: fd.barcode });
     setQty('100');
     setMode('qty');
@@ -300,7 +303,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
       if (r.canceled) return;
       const a = r.assets?.[0];
       if (!a?.base64) return setLabelMsg('This image could not be read. Pick another one.');
-      setShot({ uri: a.uri, b64: a.base64 });
+      setShot({ uri: a.uri, b64: a.base64 }); setRes(null);
       setMode('prev');
     } catch {
       setLabelMsg('The gallery could not be opened.');
@@ -312,7 +315,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     try {
       const pic = await cam.current.takePictureAsync({ quality: 0.6, base64: true, skipProcessing: true });
       if (!pic?.base64) throw new Error('The photo could not be taken. Try again.');
-      setShot({ uri: pic.uri, b64: pic.base64 });
+      setShot({ uri: pic.uri, b64: pic.base64 }); setRes(null);
       setMode('prev');
     } catch (e) {
       setLabelMsg(e instanceof Error ? e.message : 'The photo could not be taken.');
@@ -328,7 +331,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         x: EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')),
         portion: r.servingG ? String(r.servingG) : '', note: r.note ?? '',
       });
-      setMode('result');
+      setMode('prev');
     } catch (e) {
       setLabelMsg(e instanceof Error ? e.message : 'The label could not be read.');
       setMode('prev');
@@ -340,7 +343,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   /** The user validated the scanned values: move them into the create-food form. */
   const useScanned = () => {
     if (!res) return;
-    setNUnit('g');
+    setNUnit('g'); setNBasis('100');
     setNKcal(res.kcal); setNP(res.p); setNC(res.c); setNF(res.f); setNX(res.x);
     if (res.portion) setNPortion(res.portion);
     if (res.name.trim() && !nName.trim()) { setNName(res.name.trim()); if (!nIconTouched) setNIcon(suggestIcon(res.name)); }
@@ -351,7 +354,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const openCreate = (from: Mode, preset?: { name?: string; code?: string }) => {
     const name = preset?.name ?? '';
     setEditKey(null); setNX(['', '', '', '']); setLabelMsg('');
-    setNName(name); setNBrand(''); setNUnit('g'); setNKcal(''); setNP(''); setNC(''); setNF(''); setNPortion('');
+    setNName(name); setNBrand(''); setNUnit('g'); setNBasis('100'); setNKcal(''); setNP(''); setNC(''); setNF(''); setNPortion('');
     setNCode(preset?.code ?? ''); setNIcon(suggestIcon(name)); setNIconTouched(false); setCreateFrom(from);
     setMode('create');
   };
@@ -359,7 +362,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const openEdit = () => {
     if (!food?.fk) return;
     const b = food.base;
-    setEditKey(food.fk);
+    setEditKey(food.fk); setNBasis('100');
     setNName(food.name); setNBrand(food.brand ?? ''); setNUnit(b.unit === 'ml' ? 'ml' : 'g');
     setNKcal(String(b.kcal)); setNP(String(b.p)); setNC(String(b.c)); setNF(String(b.f));
     setNX(EXTRAS.map((x) => (b[x.k] != null ? String(b[x.k]) : '')));
@@ -371,19 +374,22 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const createFood = () => {
     if (!createOk) return;
     const code = nCode.trim();
+    const basis = num(nBasis) > 0 ? num(nBasis) : 100;
+    const k = 100 / basis; // the entered values are for `basis` g/ml: store them per 100
+    const r1 = (n: number) => Math.round(n * 10) / 10;
     const portion = num(nPortion) > 0 ? { label: `1 portion (${num(nPortion)} ${nUnit})`, size: num(nPortion) } : undefined;
     const fd: Food = {
       key: code ? `my:${code}` : `my:${Date.now().toString(36)}`,
       name: nName.trim(),
       brand: nBrand.trim() || undefined,
-      per: { kcal: Math.round(num(nKcal)), p: num(nP), c: num(nC), f: num(nF) },
+      per: { kcal: Math.round(num(nKcal) * k), p: r1(num(nP) * k), c: r1(num(nC) * k), f: r1(num(nF) * k) },
       unit: nUnit,
       portion,
       src: 'custom',
       barcode: code || undefined,
       icon: nIcon,
     };
-    EXTRAS.forEach((x, i) => { if (nX[i].trim()) fd.per[x.k] = num(nX[i]); });
+    EXTRAS.forEach((x, i) => { if (nX[i].trim()) fd.per[x.k] = Math.round(num(nX[i]) * k * 100) / 100; });
     if (editKey) {
       // updated values replace the stored food and the one on screen; the quantity stays
       fd.key = editKey;
@@ -398,10 +404,9 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     pick(fd);
   };
 
-  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label', prev: 'Check the photo', result: 'Nutrition label found' }[mode];
+  const title = { main: target.pick ? 'Choose a food' : 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label', prev: 'Check the photo' }[mode];
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
-    if (mode === 'result') return setMode('prev');
     if (mode === 'prev') return setMode('label');
     if (mode === 'icons' || mode === 'label') return setMode('create');
     if (mode === 'create') return setMode(createFrom);
@@ -416,7 +421,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           <Pressable onPress={back} style={s.round} accessibilityLabel="Back"><Icon d={mode === 'main' ? P.x : P.back} size={20} /></Pressable>
           <View style={{ alignItems: 'center' }}>
             <Text style={s.h}>{title}</Text>
-            {mode === 'main' && <Text style={s.headSub}>{mealLabel}</Text>}
+            {mode === 'main' && !target.pick && <Text style={s.headSub}>{mealLabel}</Text>}
           </View>
           <View style={{ width: 42 }} />
         </View>
@@ -424,7 +429,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
         {mode === 'main' && (
           <>
             <View style={s.tabs}>
-              {([['search', 'Search'], ['mine', 'My Foods'], ['meals', 'Meals']] as const).map(([k, l]) => (
+              {([['search', 'Search'], ['mine', 'My Foods'], ['meals', 'Meals']] as const).filter(([k]) => !(target.pick && k === 'meals')).map(([k, l]) => (
                 <Pressable key={k} onPress={() => setTab(k)} style={[s.tabB, tab === k && { backgroundColor: c.btn }]} accessibilityRole="button">
                   <Text style={[s.tabT, tab === k && { color: c.lime }]}>{l}</Text>
                 </Pressable>
@@ -450,10 +455,12 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                   {query.trim().length === 0 && (
                     <>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <Pressable onPress={() => setMode('quick')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
-                          <Icon d={P.flame} size={18} color={c.limeText} sw={2.4} />
-                          <Text style={s.quickT}>Quick add</Text>
-                        </Pressable>
+                        {!target.pick && (
+                          <Pressable onPress={() => setMode('quick')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
+                            <Icon d={P.flame} size={18} color={c.limeText} sw={2.4} />
+                            <Text style={s.quickT}>Quick add</Text>
+                          </Pressable>
+                        )}
                         <Pressable onPress={() => openCreate('main')} style={[s.quick, card, { flex: 1 }]} accessibilityRole="button">
                           <Icon d={P.plus} size={18} color={c.limeText} sw={2.6} />
                           <Text style={s.quickT}>Create food</Text>
@@ -619,7 +626,8 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
             </View>
             <TextInput style={s.input} value={nBrand} onChangeText={setNBrand} placeholder="Brand (optional)" placeholderTextColor={c.soft} maxLength={40} selectionColor={c.lime} />
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <Text style={s.fieldL}>Values per 100</Text>
+              <Text style={s.fieldL}>Values per</Text>
+              <TextInput style={s.basisIn} value={nBasis} onChangeText={setNBasis} keyboardType="decimal-pad" maxLength={6} selectTextOnFocus selectionColor={c.lime} accessibilityLabel="Quantity the values are for" />
               {(['g', 'ml'] as const).map((u) => (
                 <Pressable key={u} onPress={() => setNUnit(u)} style={[s.mchip, nUnit === u && { backgroundColor: c.btn }]}>
                   <Text style={[s.mchipText, nUnit === u && { color: c.lime }]}>{u}</Text>
@@ -685,6 +693,22 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           <View style={{ flex: 1 }}>
             <View style={s.camWrap}>
               <Image source={{ uri: shot.uri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+              {res && (
+                <View style={s.readout} pointerEvents="none">
+                  <Text style={s.roTitle}>{res.name.trim() ? res.name.trim() : 'Nutrition label found'}</Text>
+                  <Text style={s.roSub}>{res.note || 'Values per 100 g'}</Text>
+                  {([
+                    ['Calories', res.kcal, 'kcal', false], ['Protein', res.p, 'g', false], ['Carbs', res.c, 'g', false],
+                    ['Sugar', res.x[0], 'g', true], ['Fat', res.f, 'g', false], ['Saturated fat', res.x[3], 'g', true],
+                    ['Fiber', res.x[2], 'g', true], ['Salt', res.x[1], 'g', false],
+                  ] as const).map(([l, v, u, sub]) => (
+                    <View key={l} style={s.roRow}>
+                      <Text style={[s.roL, sub && { paddingLeft: 14, opacity: 0.85 }]}>{l}</Text>
+                      <Text style={s.roV}>{v === '' ? '—' : `${v} ${u}`}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               {labelBusy && (
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', gap: 12 }]}>
                   <ActivityIndicator color="#fff" size="large" />
@@ -692,42 +716,17 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
                 </View>
               )}
             </View>
-            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>Is the table sharp and fully visible? If not, retake the photo before sending.</Text>}
+            {labelMsg ? <Text style={[s.err, { marginHorizontal: 20, marginTop: 0 }]}>{labelMsg}</Text> : <Text style={[s.hint, { textAlign: 'center', marginTop: 0, marginHorizontal: 20 }]}>{res ? 'Check the values against the photo. You can edit them on the next screen.' : 'Is the table sharp and fully visible? If not, retake the photo before sending.'}</Text>}
             <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 14, marginBottom: Math.max(bottom, 12) + 8 }}>
-              <Pressable onPress={() => { setLabelMsg(''); setMode('label'); }} disabled={labelBusy} style={[s.prevBtn, card, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Retake"><Text style={s.quickT}>Retake</Text></Pressable>
+              <Pressable onPress={() => { setLabelMsg(''); setRes(null); setMode('label'); }} disabled={labelBusy} style={[s.prevBtn, card, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Retake"><Text style={s.quickT}>Retake</Text></Pressable>
               <Pressable onPress={openGallery} disabled={labelBusy} style={[s.prevBtn, card, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Other photo"><Text style={s.quickT}>Gallery</Text></Pressable>
-              <Pressable onPress={sendLabel} disabled={labelBusy} style={[s.prevBtn, { backgroundColor: c.lime }, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Send"><Text style={[s.quickT, { color: c.ink }]}>Send</Text></Pressable>
+              {res ? (
+                <Pressable onPress={useScanned} disabled={labelBusy} style={[s.prevBtn, { backgroundColor: c.lime }]} accessibilityRole="button" accessibilityLabel="Continue"><Text style={[s.quickT, { color: c.onLime }]}>Continue</Text></Pressable>
+              ) : (
+                <Pressable onPress={sendLabel} disabled={labelBusy} style={[s.prevBtn, { backgroundColor: c.lime }, labelBusy && { opacity: 0.4 }]} accessibilityRole="button" accessibilityLabel="Send"><Text style={[s.quickT, { color: c.onLime }]}>Send</Text></Pressable>
+              )}
             </View>
           </View>
-        )}
-
-        {mode === 'result' && res && shot && (
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
-            <Image source={{ uri: shot.uri }} style={s.resPhoto} resizeMode="cover" />
-            <Text style={s.resTitle}>Nutrition label found</Text>
-            <Text style={s.hintS}>{res.note || 'Values per 100 g. Compare them with the photo and fix anything that looks wrong.'}</Text>
-            <View style={[s.resCard, card]}>
-              {([
-                ['Name', res.name, (v: string) => setRes({ ...res, name: v }), '', true],
-                ['Calories', res.kcal, (v: string) => setRes({ ...res, kcal: v }), 'kcal', false],
-                ['Protein', res.p, (v: string) => setRes({ ...res, p: v }), 'g', false],
-                ['Carbs', res.c, (v: string) => setRes({ ...res, c: v }), 'g', false],
-                ...EXTRAS.slice(0, 1).map((x, i) => [`  ${x.label}`, res.x[0], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === 0 ? v : y)) }), 'g', false] as const),
-                ['Fat', res.f, (v: string) => setRes({ ...res, f: v }), 'g', false],
-                ...EXTRAS.slice(3).map((x) => [`  ${x.label}`, res.x[3], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === 3 ? v : y)) }), 'g', false] as const),
-                ...EXTRAS.slice(1, 3).map((x, i) => [x.label, res.x[i + 1], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === i + 1 ? v : y)) }), 'g', false] as const),
-                ['1 portion (g, optional)', res.portion, (v: string) => setRes({ ...res, portion: v }), 'g', false],
-              ] as const).map(([label, val, set, unit, text], i) => (
-                <View key={label} style={[s.resRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.line }]}>
-                  <Text style={[s.resLab, label.startsWith('  ') && { paddingLeft: 14, color: c.muted }]}>{label.trim()}</Text>
-                  <TextInput style={[s.resVal, text && { flex: 1, textAlign: 'right' }]} value={val} onChangeText={set} keyboardType={text ? 'default' : 'decimal-pad'} placeholder="—" placeholderTextColor={c.soft} selectTextOnFocus selectionColor={c.lime} accessibilityLabel={label.trim()} />
-                  {unit ? <Text style={s.resUnit}>{unit}</Text> : null}
-                </View>
-              ))}
-            </View>
-            <Pressable onPress={useScanned} style={s.cta} accessibilityRole="button"><Text style={s.ctaText}>Create food</Text></Pressable>
-            <Pressable onPress={() => setMode('prev')} style={{ alignSelf: 'center', padding: 8 }} accessibilityRole="button"><Text style={s.link}>Retake the photo</Text></Pressable>
-          </ScrollView>
         )}
 
         {mode === 'icons' && (
@@ -886,6 +885,13 @@ const mkStyles = () => StyleSheet.create({
   resLab: { fontFamily: f.semi, fontSize: 15, color: c.ink, minWidth: 110 },
   resVal: { flex: 1, textAlign: 'right', fontFamily: f.extra, fontSize: 16, color: c.ink, paddingVertical: 8 },
   resUnit: { fontFamily: f.semi, fontSize: 14, color: c.muted, width: 34 },
+  basisIn: { minWidth: 64, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, borderRadius: 14, paddingHorizontal: 10, height: 36, textAlign: 'center', fontFamily: f.extra, fontSize: 15, color: c.ink },
+  readout: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%', backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center' },
+  roTitle: { fontFamily: f.extra, fontSize: 16, color: '#fff', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
+  roSub: { fontFamily: f.semi, fontSize: 12, color: '#fff', marginBottom: 6, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
+  roRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  roL: { fontFamily: f.semi, fontSize: 14, color: '#fff', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
+  roV: { fontFamily: f.extra, fontSize: 14, color: '#fff', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
   galBtn: { position: 'absolute', left: 28, width: 56, height: 56, borderRadius: 28, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: c.lime },
   prevBtn: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   shutterIn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.lime },

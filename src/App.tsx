@@ -20,7 +20,7 @@ import { Home } from './screens/Home';
 import { AddFood, type AddTarget } from './screens/AddFood';
 import { AddSheet, type SheetView } from './screens/AddSheet';
 import { Profile } from './screens/Others';
-import { Recipes, RecipeSheet, type RecipeRequest } from './screens/Recipes';
+import { Recipes, RecipeSheet, type RecipeRequest, type PickFood } from './screens/Recipes';
 import { Stats } from './screens/Stats';
 import { Calendar } from './screens/Calendar';
 
@@ -41,6 +41,8 @@ function Root() {
   const [sheetOn, setSheetOn] = useState(false);
   const [recipeSheet, setRecipeSheet] = useState(false);
   const [recipeReq, setRecipeReq] = useState<RecipeRequest>(null);
+  const [pickTarget, setPickTarget] = useState<AddTarget | null>(null);
+  const pickFood: PickFood = (o) => setPickTarget({ meal: 'breakfast', day: selected, pick: o.onPick, query: o.query, scan: o.scan, create: o.create });
   const openSheet = (v: SheetView) => { setSheet(v); setSheetOn(true); };
 
   const mode = state.settings.theme === 'system' ? (scheme === 'dark' ? 'dark' : 'light') : state.settings.theme;
@@ -59,13 +61,14 @@ function Root() {
         <Home selected={selected} onSelect={setSelected} onOpenCalendar={() => setCalendar(true)} onAdd={(meal, day, scan) => setAdding({ meal, day, scan })} onEdit={(e) => setAdding({ meal: e.meal, day: e.day, editId: e.id })} onGoSettings={() => setTab('profile')} />
       )}
       {tab === 'stats' && <Stats onLogWeight={() => openSheet('weight')} />}
-      {tab === 'recipes' && <Recipes request={recipeReq} />}
+      {tab === 'recipes' && <Recipes request={recipeReq} onConsumed={() => setRecipeReq(null)} onPickFood={pickFood} />}
       {tab === 'profile' && <Profile />}
       <BottomNav tab={tab} onTab={setTab} onAdd={() => (tab === 'recipes' ? setRecipeSheet(true) : openSheet('grid'))} />
       <RecipeSheet visible={recipeSheet} onClose={() => setRecipeSheet(false)} onNew={(cat) => setRecipeReq({ n: Date.now(), kind: 'new', cat })} onImport={() => setRecipeReq({ n: Date.now(), kind: 'import' })} />
       <AddSheet visible={sheetOn} start={sheet ?? 'grid'} day={selected} suggested={hourMeal(state.settings.meals)} onClose={() => setSheetOn(false)} onMeal={(m) => { setSheetOn(false); setAdding({ meal: m, day: selected }); }} />
       <Calendar visible={calendar} selected={selected} marks={new Set(state.entries.map((e) => e.day))} onPick={setSelected} onClose={() => setCalendar(false)} />
       <AddFood target={adding} onClose={() => setAdding(null)} />
+      <AddFood target={pickTarget} onClose={() => setPickTarget(null)} />
     </View>
   );
 }
