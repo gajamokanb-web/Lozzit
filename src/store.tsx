@@ -2,10 +2,11 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Entry, MealKey, Profile } from './domain';
 import type { Food } from './foods';
+import { DEFAULT_CATS, type Recipe } from './recipes';
 
 type Settings = { fit: boolean; stepSource: string; meals: MealKey[]; showSugar: boolean; showSalt: boolean; showFiber: boolean; showSat: boolean; stepGoal: number; groqKey: string; groqModel: string; theme: 'light' | 'dark' | 'system'; lang: 'en' | 'fr' }; // stepSource: 'all' or a Health Connect package name
-type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; weights: Record<string, number>; foods: Record<string, Food>; settings: Settings };
-const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000, groqKey: '', groqModel: 'qwen/qwen3.8-27b', theme: 'light', lang: /^fr/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? 'fr' : 'en' } };
+type State = { profile: Profile | null; entries: Entry[]; water: Record<string, number>; weights: Record<string, number>; foods: Record<string, Food>; recipes: Recipe[]; recipeCats: string[]; settings: Settings };
+const EMPTY: State = { profile: null, entries: [], water: {}, weights: {}, foods: {}, recipes: [], recipeCats: DEFAULT_CATS, settings: { fit: false, stepSource: 'all', meals: ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner', 'snack_eve'], showSugar: false, showSalt: false, showFiber: false, showSat: false, stepGoal: 10000, groqKey: '', groqModel: 'qwen/qwen3.8-27b', theme: 'light', lang: /^fr/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? 'fr' : 'en' } };
 const KEY = 'lozzit:v1';
 
 type Store = {
@@ -20,6 +21,11 @@ type Store = {
   saveFood: (food: Food) => void;
   setSettings: (s: Partial<Settings>) => void;
   reset: () => void;
+  saveRecipe: (r: Recipe) => void;
+  removeRecipe: (id: string) => void;
+  setRecipeCats: (cats: string[], renamed?: Record<string, string>) => void;
+  exportData: () => string;
+  importData: (raw: string) => boolean;
 };
 const Ctx = createContext<Store | null>(null);
 
@@ -70,10 +76,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const saveFood = useCallback((food: Food) => setState((s) => ({ ...s, foods: { ...s.foods, [food.key]: { ...s.foods[food.key], ...food } } })), []);
   const setSettings = useCallback((p: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...p } })), []);
   const reset = useCallback(() => setState(EMPTY), []);
+  const saveRecipe = useCallback((r: Recipe) => setState((s) => ({ ...s, recipes: s.recipes.some((x) => x.id === r.id) ? s.recipes.map((x) => (x.id === r.id ? r : x)) : [r, ...s.recipes] })), []);
+  const removeRecipe = useCallback((id: string) => setState((s) => ({ ...s, recipes: s.recipes.filter((x) => x.id !== id) })), []);
+  /** New category list; `renamed` maps old name → new name so recipes follow; recipes of a deleted category go to "Other". */
+  const setRecipeCats = useCallback((cats: string[], renamed: Record<string, string> = {}) => setState((s) => ({ ...s, recipeCats: cats, recipes: s.recipes.map((r) => { const n = renamed[r.cat] ?? r.cat; return { ...r, cat: cats.includes(n) ? n : cats.includes('Other') ? 'Other' : cats[0] }; }) })), []);
+  /** Everything except the API key. */
+  const exportData = useCallback(() => JSON.stringify({ app: 'lozzit', version: 1, exported: new Date().toISOString(), data: { ...state, settings: { ...state.settings, groqKey: '' } } }), [state]);
+  const importData = useCallback((raw: string): boolean => {
+    try {
+      const j = JSON.parse(raw);
+      const d = j?.app === 'lozzit' ? j.data : j;
+      if (!d || typeof d !== 'object' || !d.profile || !Array.isArray(d.entries)) return false;
+      setState((s) => ({ ...EMPTY, ...d, entries: d.entries, settings: { ...EMPTY.settings, ...d.settings, groqKey: s.settings.groqKey }, recipes: Array.isArray(d.recipes) ? d.recipes : [], recipeCats: Array.isArray(d.recipeCats) && d.recipeCats.length ? d.recipeCats : DEFAULT_CATS }));
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const value = useMemo(
-    () => ({ ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset }),
-    [ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset],
+    () => ({ ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData }),
+    [ready, state, setProfile, addEntry, removeEntry, updateEntry, setWater, setWeight, saveFood, setSettings, reset, saveRecipe, removeRecipe, setRecipeCats, exportData, importData],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

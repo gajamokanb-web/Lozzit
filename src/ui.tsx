@@ -30,6 +30,7 @@ export const P = {
   popcorn: ['M18 8a2 2 0 0 0 0-4 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0 0 4', 'M10 22 9 8', 'm14 22 1-14', 'M20 8c.5 0 .9.4.8 1l-2.6 12c-.1.5-.7 1-1.2 1H7c-.6 0-1.1-.4-1.2-1L3.2 9c-.1-.6.3-1 .8-1Z'],
   zap: ['M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'],
   camera: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z', 'M12 13m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
+  book: ['M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20'],
   more: ['M12 5.5v.01', 'M12 12v.01', 'M12 18.5v.01'],
   trash: ['M3 6h18', 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2', 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6', 'M10 11v6', 'M14 11v6'],
   copy: ['M9 9h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
@@ -68,7 +69,7 @@ export const MealIcon = ({ k, size = 44 }: { k: MealKey; size?: number }) => <Di
 export const card: { backgroundColor: string; borderWidth: number; borderColor: string } = { backgroundColor: c.card, borderWidth: 1, borderColor: c.line };
 onTheme(() => { card.backgroundColor = c.card; card.borderColor = c.line; });
 
-export type Tab = 'home' | 'stats' | 'meals' | 'profile';
+export type Tab = 'home' | 'stats' | 'recipes' | 'profile';
 
 /** Scrolling page that leaves room for the status bar and the floating nav. */
 export function Screen({ children }: { children: React.ReactNode }) {
@@ -84,7 +85,7 @@ export function Title({ children }: { children: string }) {
   return <Text style={s.title}>{children}</Text>;
 }
 
-const LABELS: Record<Tab, string> = { home: 'Dashboard', stats: 'Stats', meals: 'Logs', profile: 'Profile' };
+const LABELS: Record<Tab, string> = { home: 'Dashboard', stats: 'Stats', recipes: 'Recipes', profile: 'Profile' };
 
 export function BottomNav({ tab, onTab, onAdd }: { tab: Tab; onTab: (t: Tab) => void; onAdd: () => void }) {
   const { bottom } = useSafeAreaInsets();
@@ -103,7 +104,7 @@ export function BottomNav({ tab, onTab, onAdd }: { tab: Tab; onTab: (t: Tab) => 
         <Item t="home" d={P.home} fill />
         <Item t="stats" d={P.stats} />
         <View style={{ width: 64 }} />
-        <Item t="meals" d={P.meals} />
+        <Item t="recipes" d={P.book} />
         <Item t="profile" d={P.user} />
       </View>
       <Pressable style={s.scan} onPress={onAdd} accessibilityRole="button" accessibilityLabel="Add">

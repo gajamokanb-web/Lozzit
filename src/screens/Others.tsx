@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { Text, TextInput, tr } from '../i18n';
+import { exportBackup, pickBackup } from '../backup';
 import { c, f, onTheme } from '../theme';
 import { ACTIVITY, autoBudget, autoMacros, budgetFor, dayKey, fmt, fmtDay, MEALS, METHODS, resolveMacros, targets, type MacroRule } from '../domain';
 import { useStore } from '../store';
@@ -8,47 +9,37 @@ import { card, Icon, P, Screen, Title } from '../ui';
 import { enableSteps, listStepSources, sourceName } from '../steps';
 
 /** Logs: every day with something logged, newest first. Tap a day to open it on the dashboard. */
-export function Logs({ onPickDay }: { onPickDay: (k: string) => void }) {
-  const { state } = useStore();
-  const t = targets(state.profile!);
-  const byDay = new Map<string, number>();
-  state.entries.forEach((e) => byDay.set(e.day, (byDay.get(e.day) ?? 0) + e.kcal));
-  const days = [...byDay.keys()].sort().reverse();
-  return (
-    <Screen>
-      <Title>Logs</Title>
-      {days.length === 0 && <Text style={s.empty}>Nothing logged yet. Tap the green button to add your first meal.</Text>}
-      <View style={{ gap: 10, marginHorizontal: 20 }}>
-        {days.map((k) => {
-          const kcal = byDay.get(k)!;
-          const n = state.entries.filter((e) => e.day === k).length;
-          return (
-            <Pressable key={k} onPress={() => onPickDay(k)} style={[s.logRow, card]}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.logDay}>{k === dayKey() ? 'Today' : fmtDay(k)}</Text>
-                <Text style={s.logSub}>{n} {n === 1 ? 'item' : 'items'}</Text>
-              </View>
-              <Text style={[s.logKcal, kcal > t.kcal && { color: c.orange }]}>{fmt(kcal)}<Text style={s.logUnit}> / {fmt(t.kcal)}</Text></Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </Screen>
-  );
-}
-
 export function Profile() {
-  const { state, reset, setSettings, setProfile, setWeight } = useStore();
+  const { state, reset, setSettings, setProfile, setWeight, exportData, importData } = useStore();
   const p = state.profile!;
   const t = targets(p);
   const act = ACTIVITY.find((a) => a.v === p.activity)?.label ?? '';
   const confirmReset = () => {
     const go = () => reset();
     if (Platform.OS === 'web') return go();
-    Alert.alert(tr('Start over?'), tr('This deletes your profile and everything you logged on this phone.'), [
+    Alert.alert(tr('Delete profile?'), tr('This deletes your profile and everything you logged on this phone.'), [
       { text: tr('Cancel'), style: 'cancel' },
-      { text: tr('Delete and restart'), style: 'destructive', onPress: go },
+      { text: tr('Delete profile'), style: 'destructive', onPress: go },
     ]);
+  };
+  const [dataMsg, setDataMsg] = useState('');
+  const doExport = async () => {
+    try {
+      const r = await exportBackup(exportData());
+      setDataMsg(r === 'unavailable' ? 'Could not open the share sheet on this device.' : 'Backup file ready.');
+    } catch { setDataMsg('Could not create the backup file.'); }
+  };
+  const doImport = async () => {
+    try {
+      const raw = await pickBackup();
+      if (raw == null) return;
+      const apply = () => setDataMsg(importData(raw) ? 'Data imported.' : 'This file is not a Lozzit backup.');
+      if (Platform.OS === 'web') return apply();
+      Alert.alert(tr('Import data'), tr('This replaces everything on this phone with the content of the file.'), [
+        { text: tr('Cancel'), style: 'cancel' },
+        { text: tr('Import data'), style: 'destructive', onPress: apply },
+      ]);
+    } catch { setDataMsg('Could not read this file.'); }
   };
   const [picker, setPicker] = useState(false);
   const [sources, setSources] = useState<string[] | null>(null);
@@ -328,8 +319,21 @@ export function Profile() {
           </View>
         </View>
       </Modal>
+      <Text style={s.sect}>Data</Text>
+      <View style={[s.list, card]}>
+        <Text style={[s.liS, { paddingTop: 14 }]}>Save everything (profile, log, foods, recipes, settings) in a file, or restore it from a file. Your API key is not included.</Text>
+        <Pressable onPress={doExport} style={[s.li, { alignItems: 'center', borderTopWidth: 1, borderTopColor: c.line, marginTop: 10 }]} accessibilityRole="button">
+          <Text style={s.liT}>Export data</Text>
+          <Icon d={P.next} size={16} color={c.soft} />
+        </Pressable>
+        <Pressable onPress={doImport} style={[s.li, { alignItems: 'center', borderTopWidth: 1, borderTopColor: c.line }]} accessibilityRole="button">
+          <Text style={s.liT}>Import data</Text>
+          <Icon d={P.next} size={16} color={c.soft} />
+        </Pressable>
+        {dataMsg ? <Text style={[s.liS, { paddingBottom: 12, color: /^Could|^This/.test(dataMsg) ? c.red : c.limeText }]}>{dataMsg}</Text> : null}
+      </View>
       <Pressable onPress={confirmReset} style={s.reset} accessibilityRole="button">
-        <Text style={s.resetText}>Start over with a new profile</Text>
+        <Text style={s.resetText}>Delete profile</Text>
       </Pressable>
     </Screen>
   );

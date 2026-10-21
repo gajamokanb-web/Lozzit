@@ -14,7 +14,7 @@ import { card, Icon, P } from '../ui';
 import { FactorModal } from './Factor';
 
 export type AddTarget = { meal: MealKey; day: string; editId?: string; scan?: boolean };
-type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev';
+type Mode = 'main' | 'scan' | 'quick' | 'qty' | 'create' | 'icons' | 'label' | 'prev' | 'result';
 type Tab = 'search' | 'mine' | 'meals';
 type Chosen = { name: string; brand?: string; base: Base; fk?: string; portion?: Food['portion']; src?: Food['src']; icon?: string; barcode?: string };
 
@@ -152,6 +152,7 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
   const [torch, setTorch] = useState(false);
   const [labelBusy, setLabelBusy] = useState(false);
   const [labelMsg, setLabelMsg] = useState('');
+  const [res, setRes] = useState<{ name: string; kcal: string; p: string; c: string; f: string; x: string[]; portion: string; note: string } | null>(null);
   const [shot, setShot] = useState<{ uri: string; b64: string } | null>(null);
   useEffect(() => { if (mode !== 'scan' && mode !== 'label') setTorch(false); }, [mode]);
 
@@ -322,19 +323,29 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     setLabelBusy(true); setLabelMsg('');
     try {
       const r = await readLabel(shot.b64, state.settings.groqKey.trim(), state.settings.groqModel.trim() || DEFAULT_MODEL);
-      setNUnit('g');
-      setNKcal(String(r.per.kcal)); setNP(String(r.per.p)); setNC(String(r.per.c)); setNF(String(r.per.f));
-      setNX(EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')));
-      if (r.servingG) setNPortion(String(r.servingG));
-      if (r.name && !nName.trim()) { setNName(r.name); if (!nIconTouched) setNIcon(suggestIcon(r.name)); }
-      setLabelMsg(r.note ?? 'Values read from the label: check them before saving.');
-      setMode('create');
+      setRes({
+        name: r.name ?? '', kcal: String(r.per.kcal), p: String(r.per.p), c: String(r.per.c), f: String(r.per.f),
+        x: EXTRAS.map((x) => (r.per[x.k] != null ? String(r.per[x.k]) : '')),
+        portion: r.servingG ? String(r.servingG) : '', note: r.note ?? '',
+      });
+      setMode('result');
     } catch (e) {
       setLabelMsg(e instanceof Error ? e.message : 'The label could not be read.');
       setMode('prev');
     } finally {
       setLabelBusy(false);
     }
+  };
+
+  /** The user validated the scanned values: move them into the create-food form. */
+  const useScanned = () => {
+    if (!res) return;
+    setNUnit('g');
+    setNKcal(res.kcal); setNP(res.p); setNC(res.c); setNF(res.f); setNX(res.x);
+    if (res.portion) setNPortion(res.portion);
+    if (res.name.trim() && !nName.trim()) { setNName(res.name.trim()); if (!nIconTouched) setNIcon(suggestIcon(res.name)); }
+    setLabelMsg('Values read from the label: check them before saving.');
+    setMode('create');
   };
 
   const openCreate = (from: Mode, preset?: { name?: string; code?: string }) => {
@@ -387,9 +398,10 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
     pick(fd);
   };
 
-  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label', prev: 'Check the photo' }[mode];
+  const title = { main: 'Add food', scan: 'Scan barcode', quick: 'Quick add', qty: editing ? 'Edit quantity' : 'Add to log', create: editKey ? 'Edit nutrition' : 'Create food', icons: 'Choose a logo', label: 'Scan label', prev: 'Check the photo', result: 'Nutrition label found' }[mode];
   const back = () => {
     if (mode === 'main' || (mode === 'qty' && editing)) return onClose();
+    if (mode === 'result') return setMode('prev');
     if (mode === 'prev') return setMode('label');
     if (mode === 'icons' || mode === 'label') return setMode('create');
     if (mode === 'create') return setMode(createFrom);
@@ -689,6 +701,35 @@ export function AddFood({ target, onClose }: { target: AddTarget | null; onClose
           </View>
         )}
 
+        {mode === 'result' && res && shot && (
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: Math.max(bottom, 16) + 30 }}>
+            <Image source={{ uri: shot.uri }} style={s.resPhoto} resizeMode="cover" />
+            <Text style={s.resTitle}>Nutrition label found</Text>
+            <Text style={s.hintS}>{res.note || 'Values per 100 g. Compare them with the photo and fix anything that looks wrong.'}</Text>
+            <View style={[s.resCard, card]}>
+              {([
+                ['Name', res.name, (v: string) => setRes({ ...res, name: v }), '', true],
+                ['Calories', res.kcal, (v: string) => setRes({ ...res, kcal: v }), 'kcal', false],
+                ['Protein', res.p, (v: string) => setRes({ ...res, p: v }), 'g', false],
+                ['Carbs', res.c, (v: string) => setRes({ ...res, c: v }), 'g', false],
+                ...EXTRAS.slice(0, 1).map((x, i) => [`  ${x.label}`, res.x[0], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === 0 ? v : y)) }), 'g', false] as const),
+                ['Fat', res.f, (v: string) => setRes({ ...res, f: v }), 'g', false],
+                ...EXTRAS.slice(3).map((x) => [`  ${x.label}`, res.x[3], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === 3 ? v : y)) }), 'g', false] as const),
+                ...EXTRAS.slice(1, 3).map((x, i) => [x.label, res.x[i + 1], (v: string) => setRes({ ...res, x: res.x.map((y, j) => (j === i + 1 ? v : y)) }), 'g', false] as const),
+                ['1 portion (g, optional)', res.portion, (v: string) => setRes({ ...res, portion: v }), 'g', false],
+              ] as const).map(([label, val, set, unit, text], i) => (
+                <View key={label} style={[s.resRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.line }]}>
+                  <Text style={[s.resLab, label.startsWith('  ') && { paddingLeft: 14, color: c.muted }]}>{label.trim()}</Text>
+                  <TextInput style={[s.resVal, text && { flex: 1, textAlign: 'right' }]} value={val} onChangeText={set} keyboardType={text ? 'default' : 'decimal-pad'} placeholder="—" placeholderTextColor={c.soft} selectTextOnFocus selectionColor={c.lime} accessibilityLabel={label.trim()} />
+                  {unit ? <Text style={s.resUnit}>{unit}</Text> : null}
+                </View>
+              ))}
+            </View>
+            <Pressable onPress={useScanned} style={s.cta} accessibilityRole="button"><Text style={s.ctaText}>Create food</Text></Pressable>
+            <Pressable onPress={() => setMode('prev')} style={{ alignSelf: 'center', padding: 8 }} accessibilityRole="button"><Text style={s.link}>Retake the photo</Text></Pressable>
+          </ScrollView>
+        )}
+
         {mode === 'icons' && (
           <View style={{ flex: 1 }}>
             <TextInput style={[s.input, { marginHorizontal: 20, marginBottom: 8 }]} value={iconQ} onChangeText={setIconQ} placeholder="Filter (English names)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCorrect={false} />
@@ -838,6 +879,13 @@ const mkStyles = () => StyleSheet.create({
   labelBtn: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   labelFrame: { width: '86%', height: '70%', borderRadius: 20, borderWidth: 3, borderColor: c.lime },
   shutter: { alignSelf: 'center', width: 74, height: 74, borderRadius: 37, borderWidth: 4, borderColor: c.btn, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  resPhoto: { height: 170, borderRadius: 20, backgroundColor: '#000' },
+  resTitle: { fontFamily: f.extra, fontSize: 20, color: c.ink },
+  resCard: { borderRadius: 20, paddingHorizontal: 16 },
+  resRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50, gap: 8 },
+  resLab: { fontFamily: f.semi, fontSize: 15, color: c.ink, minWidth: 110 },
+  resVal: { flex: 1, textAlign: 'right', fontFamily: f.extra, fontSize: 16, color: c.ink, paddingVertical: 8 },
+  resUnit: { fontFamily: f.semi, fontSize: 14, color: c.muted, width: 34 },
   galBtn: { position: 'absolute', left: 28, width: 56, height: 56, borderRadius: 28, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: c.lime },
   prevBtn: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   shutterIn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.lime },
