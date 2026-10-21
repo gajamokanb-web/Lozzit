@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Keyboard,  Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { askConfirm } from '../dialog';
+import { askConfirm, notify } from '../dialog';
 import { Text, TextInput, tr } from '../i18n';
+import { Linking } from 'react-native';
+import { norm } from '../foods';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, f, onTheme } from '../theme';
 import { fmt } from '../domain';
@@ -252,6 +254,8 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
   const [edit, setEdit] = useState<Ingredient | null>(null);
   const [right, setRight] = useState<'orig' | 'conv'>('orig');
   const [serv, setServ] = useState(1);
+  const [creator, setCreator] = useState('');
+  const [link, setLink] = useState('');
   const [ratio, setRatio] = useState(0.5);
   const ratioRef = useRef(0.5);
   const colsW = useRef(340);
@@ -268,14 +272,14 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
   })).current;
   useEffect(() => {
     if (!data) return;
-    setTitle(data.conv.title);
+    setTitle(data.conv.title); setCreator(''); setLink('');
     setServ(Math.round(data.conv.servings ?? 1) || 1);
     setIngs(data.conv.ingredients.map((x) => ({ id: newId(), name: x.name, g: x.g, orig: x.original })));
     setRight('orig');
   }, [data]);
   const save = () => {
     if (!data) return;
-    const r: Recipe = { id: newId(), title: title.trim() || 'Recipe', cat: DRAFT, ingredients: ings, steps: data.conv.recipeGrams, original: data.text, source: 'instagram', servings: serv, created: Date.now() };
+    const r: Recipe = { id: newId(), title: title.trim() || 'Recipe', cat: DRAFT, ingredients: ings, steps: data.conv.recipeGrams, original: data.text, source: 'instagram', creator: creator.trim() || undefined, link: link.trim() || undefined, servings: serv, created: Date.now() };
     saveRecipe(r);
     onSaved(r);
   };
@@ -287,6 +291,10 @@ function ReviewModal({ data, onClose, onSaved }: { data: { text: string; conv: C
           <Text style={s.fTitle}>Check the recipe</Text>
         </View>
         <TextInput style={[s.field, { marginHorizontal: 8 }]} value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={c.soft} selectionColor={c.lime} accessibilityLabel="Recipe title" />
+        <View style={s.srcRow}>
+          <TextInput style={[s.field, s.srcIn]} value={creator} onChangeText={setCreator} placeholder="Creator (@name)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCapitalize="none" accessibilityLabel="Creator" />
+          <TextInput style={[s.field, s.srcIn, { flex: 1.3 }]} value={link} onChangeText={setLink} placeholder="Video link" placeholderTextColor={c.soft} selectionColor={c.lime} autoCapitalize="none" autoCorrect={false} keyboardType="url" accessibilityLabel="Video link" />
+        </View>
         <View style={{ marginHorizontal: 8, marginTop: 8 }}><Servings value={serv} onChange={setServ} /></View>
         <View style={s.cols} onLayout={(e) => { colsW.current = e.nativeEvent.layout.width; }}>
           <View style={[s.col, card, { flex: ratio }]}>
@@ -339,6 +347,7 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
   const [r, setR] = useState<Recipe | null>(null);
   const [edit, setEdit] = useState<Ingredient | null>(null);
   const [showOrig, setShowOrig] = useState(false);
+  const [ask, setAsk] = useState<{ ing: Ingredient; options: Food[] }[]>([]);
   const scroll = useRef<ScrollView>(null);
   const [kb, setKb] = useState(0);
   useEffect(() => {
@@ -351,6 +360,43 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
   const isNew = !state.recipes.some((x) => x.id === r.id);
   const t = totalsOf(r.ingredients, state.foods);
   const patchIng = (i: Ingredient) => setR((x) => x && { ...x, ingredients: x.ingredients.some((y) => y.id === i.id) ? x.ingredients.map((y) => (y.id === i.id ? i : y)) : [...x.ingredients, i] });
+  /** Links every unlinked ingredient to the most fitting, most used food of "My foods"; asks (3 choices max) when unsure. */
+  const smartLink = () => {
+    const m = new Map<string, Food>(Object.entries(state.foods));
+    for (const e of state.entries) {
+      if (!e.fk || m.has(e.fk) || !e.base || e.base.size !== 100) continue;
+      m.set(e.fk, { key: e.fk, name: e.name, brand: e.brand, per: (({ size: _s, unit: _u, ...per }) => per)(e.base), unit: e.base.unit === 'ml' ? 'ml' : 'g', portion: e.portion, src: e.fk.startsWith('off:') ? 'off' : 'ciqual' });
+    }
+    const use = new Map<string, number>();
+    for (const e of state.entries) if (e.fk) use.set(e.fk, (use.get(e.fk) ?? 0) + 1);
+    for (const x of state.recipes) for (const i of x.ingredients) if (i.fk) use.set(i.fk, (use.get(i.fk) ?? 0) + 1);
+    const foods = [...m.values()];
+    const stop = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'un', 'une', 'et', 'au', 'aux', 'en', 'd', 'l', 'a']);
+    const words = (x: string) => norm(x).split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !stop.has(w)).map((w) => w.replace(/(s|x)$/, ''));
+    const auto: Record<string, string> = {};
+    const ask: { ing: Ingredient; options: Food[] }[] = [];
+    for (const ing of r.ingredients) {
+      if (ing.fk && state.foods[ing.fk]) continue;
+      const iw = words(ing.name);
+      if (!iw.length) continue;
+      const scored = foods.map((fd) => {
+        const fw = words(fd.name);
+        if (!fw.length) return { fd, s: 0 };
+        const hit = iw.filter((w) => fw.includes(w)).length;
+        const s = (hit / iw.length) * 0.6 + (hit / fw.length) * 0.4;
+        return { fd, s: hit === 0 ? 0 : s };
+      }).filter((x) => x.s >= 0.5).sort((a, b) => b.s - a.s || (use.get(b.fd.key) ?? 0) - (use.get(a.fd.key) ?? 0));
+      if (!scored.length) continue;
+      const [a, b] = scored;
+      const ua = use.get(a.fd.key) ?? 0, ub = b ? use.get(b.fd.key) ?? 0 : 0;
+      if (!b || a.s - b.s > 0.2 || (ua > 0 && ua >= 2 * ub && a.s >= b.s - 0.05)) auto[ing.id] = a.fd.key;
+      else ask.push({ ing, options: scored.slice(0, 3).map((x) => x.fd) });
+    }
+    const n = Object.keys(auto).length;
+    if (n) setR((x) => x && { ...x, ingredients: x.ingredients.map((i) => (auto[i.id] ? { ...i, fk: auto[i.id] } : i)) });
+    setAsk(ask);
+    if (!n && !ask.length) notify('Smart-Link', 'No matching food found in My foods.');
+  };
   const persist = () => { saveRecipe({ ...r, title: r.title.trim() || 'Untitled recipe' }); onClose(); };
   const del = () => {
     askConfirm({ title: 'Delete recipe?', message: 'This recipe will be removed.', confirmText: tr('Delete'), danger: true }).then((ok) => { if (ok) { removeRecipe(r.id); onClose(); } });
@@ -372,6 +418,13 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
               </Pressable>
             ))}
           </ScrollView>
+          {r.source === 'instagram' && (
+            <View style={[s.srcRow, { marginHorizontal: 0 }]}>
+              <TextInput style={[s.field, s.srcIn]} value={r.creator ?? ''} onChangeText={(v) => setR({ ...r, creator: v })} placeholder="Creator (@name)" placeholderTextColor={c.soft} selectionColor={c.lime} autoCapitalize="none" accessibilityLabel="Creator" />
+              <TextInput style={[s.field, s.srcIn, { flex: 1.3 }]} value={r.link ?? ''} onChangeText={(v) => setR({ ...r, link: v })} placeholder="Video link" placeholderTextColor={c.soft} selectionColor={c.lime} autoCapitalize="none" autoCorrect={false} keyboardType="url" accessibilityLabel="Video link" />
+              {r.link?.trim() ? <Pressable onPress={() => { const u = r.link!.trim(); Linking.openURL(/^https?:/i.test(u) ? u : `https://${u}`).catch(() => {}); }} style={s.openBtn} hitSlop={6} accessibilityRole="button" accessibilityLabel="Open the video"><Icon d={P.next} size={18} color={c.onLime} sw={2.6} /></Pressable> : null}
+            </View>
+          )}
           {r.cat === DRAFT && r.ingredients.length > 0 && <Text style={s.hint}>Draft: link each ingredient to a food, then move the recipe to a category.</Text>}
           <View style={[s.sumCard, { backgroundColor: c.lime }]}>
             <View style={{ flex: 1 }}>
@@ -386,7 +439,15 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
             </View>
           </View>
           <View style={[s.stepsCard, card]}><Servings value={r.servings} onChange={(n) => setR({ ...r, servings: n })} /></View>
-          <Text style={s.sect}>Ingredients</Text>
+          <View style={s.sectRow}>
+            <Text style={s.sect}>Ingredients</Text>
+            {r.source === 'instagram' && r.ingredients.some((i) => !(i.fk && state.foods[i.fk])) && (
+              <Pressable onPress={smartLink} style={s.smart} accessibilityRole="button" accessibilityLabel="Smart-Link">
+                <Icon d={P.zap} size={15} color={c.onLime} fill={c.onLime} sw={2} />
+                <Text style={s.smartT}>Smart-Link</Text>
+              </Pressable>
+            )}
+          </View>
           <View style={[s.listCard, card]}>
             {r.ingredients.map((i, k) => {
               const fd = i.fk ? state.foods[i.fk] : undefined;
@@ -422,6 +483,22 @@ function RecipeDetail({ recipe, onClose, onPickFood }: { recipe: Recipe | null; 
         {!kb && <View style={[s.bar, { paddingBottom: Math.max(bottom, 12) + 8 }]}>
           <Pressable onPress={persist} style={s.cta} accessibilityRole="button"><Text style={s.ctaT}>Save</Text></Pressable>
         </View>}
+        <Modal visible={ask.length > 0} transparent animationType="fade" onRequestClose={() => setAsk([])} statusBarTranslucent>
+          <View style={s.mWrap}>
+            {ask[0] && (
+              <View style={s.mCard}>
+                <Text style={s.mTitle}>{`Which food for “${ask[0].ing.name}”?`}</Text>
+                {ask[0].options.map((fd) => (
+                  <Pressable key={fd.key} onPress={() => { patchIng({ ...ask[0].ing, fk: fd.key }); setAsk((q) => q.slice(1)); }} style={s.pRow2} accessibilityRole="button" accessibilityLabel={fd.name}>
+                    <FoodIcon name={fd.name} icon={fd.icon} size={32} />
+                    <Text style={s.pName} numberOfLines={1}>{fd.name}{fd.brand ? ` · ${fd.brand}` : ''}</Text>
+                  </Pressable>
+                ))}
+                <Pressable onPress={() => setAsk((q) => q.slice(1))} style={{ alignSelf: 'center', padding: 10 }} accessibilityRole="button"><Text style={s.link}>Skip</Text></Pressable>
+              </View>
+            )}
+          </View>
+        </Modal>
         <IngredientDialog
           ing={edit}
           onClose={() => setEdit(null)}
@@ -542,6 +619,14 @@ const mkStyles = () => StyleSheet.create({
   sumBig: { fontFamily: f.extra, fontSize: 32, lineHeight: 40, color: c.onLime, letterSpacing: -1 },
   sumUnit: { fontFamily: f.bold, fontSize: 15, letterSpacing: 0 },
   sumLine: { fontFamily: f.semi, fontSize: 13, color: c.onLime, opacity: 0.8 },
+  srcRow: { flexDirection: 'row', gap: 8, marginHorizontal: 8, marginTop: 8, alignItems: 'center' },
+  srcIn: { flex: 1, minWidth: 0, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, fontFamily: f.medium, fontSize: 14, paddingVertical: 9 },
+  openBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: c.lime, alignItems: 'center', justifyContent: 'center' },
+  sectRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  smart: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.lime, borderRadius: 18, paddingHorizontal: 14, height: 36, elevation: 3, shadowColor: c.lime, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  smartT: { fontFamily: f.extra, fontSize: 13.5, color: c.onLime, letterSpacing: -0.2 },
+  pRow2: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.page, borderRadius: 16, padding: 10 },
+  pName: { flex: 1, fontFamily: f.semi, fontSize: 15, color: c.ink },
   sect: { fontFamily: f.extra, fontSize: 17, color: c.ink, marginTop: 4 },
   listCard: { borderRadius: 20, overflow: 'hidden' },
   dRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },

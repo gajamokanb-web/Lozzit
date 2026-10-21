@@ -9,6 +9,8 @@ export type Recipe = {
   ingredients: Ingredient[];
   steps: string; // method, quantities in grams when imported
   original?: string; // pasted source text
+  creator?: string; // who posted the recipe (Instagram)
+  link?: string; // link to the video
   source?: 'instagram';
   servings?: number;
   created: number;
