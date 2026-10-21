@@ -886,7 +886,7 @@ const mkStyles = () => StyleSheet.create({
   resVal: { flex: 1, textAlign: 'right', fontFamily: f.extra, fontSize: 16, color: c.ink, paddingVertical: 8 },
   resUnit: { fontFamily: f.semi, fontSize: 14, color: c.muted, width: 34 },
   basisIn: { minWidth: 64, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, borderRadius: 14, paddingHorizontal: 10, height: 36, textAlign: 'center', fontFamily: f.extra, fontSize: 15, color: c.ink },
-  readout: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%', backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center' },
+  readout: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%', backgroundColor: 'rgba(0,0,0,0.75)', paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center' },
   roTitle: { fontFamily: f.extra, fontSize: 16, color: '#fff', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
   roSub: { fontFamily: f.semi, fontSize: 12, color: '#fff', marginBottom: 6, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 4 },
   roRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },

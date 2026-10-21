@@ -15,6 +15,7 @@ const polar = (cx: number, cy: number, r: number, deg: number) => {
   const a = ((deg - 90) * Math.PI) / 180;
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
 };
+const OUT = 'rgba(128,128,128,0.4)';
 const arc = (cx: number, cy: number, r: number, a0: number, a1: number) => {
   const [x0, y0] = polar(cx, cy, r, a0);
   const [x1, y1] = polar(cx, cy, r, a1);
@@ -28,6 +29,7 @@ function Gauge({ pct, color, big, small, foot }: { pct: number; color: string; b
     <View style={{ width: S + 8, alignItems: 'center' }}>
       <View style={{ width: S, height: S }}>
         <Svg width={S} height={S} viewBox={`0 0 ${S} ${S}`}>
+          <Path d={arc(S / 2, S / 2, 54, a0, a0 + sweep)} stroke={OUT} strokeWidth={18} strokeLinecap="round" fill="none" />
           <Path d={arc(S / 2, S / 2, 54, a0, a0 + sweep)} stroke={c.line} strokeWidth={14} strokeLinecap="round" fill="none" />
           {p > 0 && <Path d={arc(S / 2, S / 2, 54, a0, a0 + sweep * Math.max(p, 0.02))} stroke={color} strokeWidth={14} strokeLinecap="round" fill="none" />}
         </Svg>
@@ -178,7 +180,7 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
         <View style={s.row}>
           <View style={{ width: 136 }}>
             <Svg width={96} height={96} viewBox="-48 -48 96 96" style={{ alignSelf: 'center' }}>
-              {!wk ? <Circle r={46} fill={c.line} /> : (
+              {!wk ? <Circle r={46} fill={c.line} stroke={OUT} strokeWidth={1.5} /> : (
                 (() => {
                   const segs = [[wk.f, FAT], [wk.c, CARB], [wk.p, PROT]] as const;
                   const nz = segs.filter((x) => x[0] > 0.0001);
@@ -193,6 +195,7 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
                   });
                 })()
               )}
+              {wk && <Circle r={46} fill="none" stroke={OUT} strokeWidth={1.5} />}
             </Svg>
             <View style={{ marginTop: 12, gap: 4 }}>
               {([['Fat', FAT, wk?.f], ['Carbs', CARB, wk?.c], ['Protein', PROT, wk?.p]] as const).map(([l, col, v]) => (
@@ -271,8 +274,8 @@ export function Stats({ onLogWeight }: { onLogWeight: () => void }) {
 }
 
 const mkStyles = () => StyleSheet.create({
-  card: { marginHorizontal: 20, marginBottom: 14, borderRadius: 28, padding: 18 },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  card: { marginHorizontal: 10, marginBottom: 8, borderRadius: 26, padding: 16 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardT: { fontFamily: f.extra, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
   row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   gaugeC: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
@@ -281,8 +284,8 @@ const mkStyles = () => StyleSheet.create({
   gaugeFoot: { fontFamily: f.bold, fontSize: 14, color: c.ink, marginTop: 6 },
   bars: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', marginLeft: 8 },
   barCol: { alignItems: 'center', width: 26 },
-  track: { width: 22, height: BAR_H, borderRadius: 11, backgroundColor: c.page, justifyContent: 'flex-end', overflow: 'hidden' },
-  fill: { width: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'flex-end' },
+  track: { width: 22, height: BAR_H, borderRadius: 11, backgroundColor: c.page, justifyContent: 'flex-end', overflow: 'hidden', borderWidth: 1.5, borderColor: OUT },
+  fill: { width: '100%', borderRadius: 11, alignItems: 'center', justifyContent: 'flex-end' },
   barL: { fontFamily: f.semi, fontSize: 12.5, color: c.soft, marginTop: 8 },
   note: { fontFamily: f.regular, fontSize: 14, color: c.ink, textAlign: 'center', marginTop: 18 },
   noteB: { fontFamily: f.extra },

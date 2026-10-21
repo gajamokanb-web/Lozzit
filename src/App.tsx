@@ -1,3 +1,4 @@
+import { ConfirmHost } from './dialog';
 import React, { useState } from 'react';
 import { useColorScheme, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -69,6 +70,7 @@ function Root() {
       <Calendar visible={calendar} selected={selected} marks={new Set(state.entries.map((e) => e.day))} onPick={setSelected} onClose={() => setCalendar(false)} />
       <AddFood target={adding} onClose={() => setAdding(null)} />
       <AddFood target={pickTarget} onClose={() => setPickTarget(null)} />
+      <ConfirmHost />
     </View>
   );
 }

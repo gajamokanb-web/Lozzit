@@ -16,6 +16,7 @@ export const P = {
   user: ['M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2', 'M12 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0'],
   scan: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M7 12h10'],
   flame: ['M12 3q1 4 4 6.5t3 5.5a7 7 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'],
+  search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z', 'm21 21-4.3-4.3'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
   plus: ['M5 12h14', 'M12 5v14'],
   back: ['m15 18-6-6 6-6'],
@@ -115,7 +116,7 @@ export function BottomNav({ tab, onTab, onAdd }: { tab: Tab; onTab: (t: Tab) => 
 }
 
 const mkStyles = () => StyleSheet.create({
-  title: { fontFamily: f.extra, fontSize: 26, color: c.ink, letterSpacing: -0.6, marginHorizontal: 20, marginBottom: 14 },
+  title: { fontFamily: f.extra, fontSize: 26, color: c.ink, letterSpacing: -0.6, marginHorizontal: 10, marginBottom: 14 },
   navWrap: { position: 'absolute', left: 16, right: 16 },
   nav: { ...card, height: 72, borderRadius: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4, elevation: 8, shadowColor: c.ink, shadowOpacity: 0.1, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
   tab: { width: 68, height: 56, alignItems: 'center', justifyContent: 'center', gap: 4 },

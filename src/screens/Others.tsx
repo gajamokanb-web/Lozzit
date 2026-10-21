@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { askConfirm, notify } from '../dialog';
 import { Text, TextInput, tr } from '../i18n';
 import { exportBackup, pickBackup } from '../backup';
 import { c, f, onTheme } from '../theme';
@@ -15,12 +16,7 @@ export function Profile() {
   const t = targets(p);
   const act = ACTIVITY.find((a) => a.v === p.activity)?.label ?? '';
   const confirmReset = () => {
-    const go = () => reset();
-    if (Platform.OS === 'web') return go();
-    Alert.alert(tr('Delete profile?'), tr('This deletes your profile and everything you logged on this phone.'), [
-      { text: tr('Cancel'), style: 'cancel' },
-      { text: tr('Delete profile'), style: 'destructive', onPress: go },
-    ]);
+    askConfirm({ title: 'Delete profile?', message: 'This deletes your profile and everything you logged on this phone.', confirmText: tr('Delete profile'), danger: true }).then((ok) => { if (ok) reset(); });
   };
   const [dataMsg, setDataMsg] = useState('');
   const doExport = async () => {
@@ -34,11 +30,7 @@ export function Profile() {
       const raw = await pickBackup();
       if (raw == null) return;
       const apply = () => setDataMsg(importData(raw) ? 'Data imported.' : 'This file is not a Lozzit backup.');
-      if (Platform.OS === 'web') return apply();
-      Alert.alert(tr('Import data'), tr('This replaces everything on this phone with the content of the file.'), [
-        { text: tr('Cancel'), style: 'cancel' },
-        { text: tr('Import data'), style: 'destructive', onPress: apply },
-      ]);
+      if (await askConfirm({ title: 'Import data', message: 'This replaces everything on this phone with the content of the file.', confirmText: tr('Import data'), danger: true })) apply();
     } catch { setDataMsg('Could not read this file.'); }
   };
   const [picker, setPicker] = useState(false);
@@ -50,11 +42,11 @@ export function Profile() {
     if (!on) return setSettings({ fit: false });
     const r = await enableSteps();
     if (r === 'ok') return setSettings({ fit: true });
-    Alert.alert(
-      tr(r === 'denied' ? 'Permission needed' : 'Health Connect not available'),
-      tr(r === 'denied'
+    notify(
+      r === 'denied' ? 'Permission needed' : 'Health Connect not available',
+      r === 'denied'
         ? 'Allow Lozzit to read your steps in the Health Connect permission screen, then try again.'
-        : 'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.'),
+        : 'Steps are read through Health Connect, where Google Fit stores them. Install or update Health Connect from Google Play (on Android 14+ it is in Settings → Health Connect), then try again.',
     );
   };
   type EditKey = 'age' | 'height' | 'weight' | 'goal' | 'activity' | 'budget' | 'macros' | 'stepGoal';
@@ -343,18 +335,18 @@ const mkStyles = () => StyleSheet.create({
   segRow: { flexDirection: 'row', gap: 8 },
   segB: { flex: 1, height: 40, borderRadius: 20, backgroundColor: c.page, alignItems: 'center', justifyContent: 'center' },
   segT: { fontFamily: f.bold, fontSize: 13.5, color: c.ink },
-  empty: { fontFamily: f.regular, fontSize: 15, color: c.muted, marginHorizontal: 20, lineHeight: 22 },
-  group: { marginHorizontal: 20, marginBottom: 20 },
+  empty: { fontFamily: f.regular, fontSize: 15, color: c.muted, marginHorizontal: 10, lineHeight: 22 },
+  group: { marginHorizontal: 10, marginBottom: 20 },
   groupHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   groupName: { fontFamily: f.extra, fontSize: 17, color: c.ink },
   groupKcal: { fontFamily: f.bold, fontSize: 14, color: c.limeText },
-  panel: { marginHorizontal: 20, borderRadius: 28, padding: 18, height: 230 },
+  panel: { marginHorizontal: 10, borderRadius: 28, padding: 18, height: 230 },
   chart: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flex: 1 },
   col: { alignItems: 'center', width: 34 },
   colTrack: { height: 140, justifyContent: 'flex-end', width: 22 },
   colL: { fontFamily: f.semi, fontSize: 12, color: c.soft, marginTop: 10 },
   limit: { position: 'absolute', left: 18, right: 18, height: 1, borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: c.soft },
-  statRow: { flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 12 },
+  statRow: { flexDirection: 'row', gap: 12, marginHorizontal: 10, marginTop: 12 },
   stat: { flex: 1, borderRadius: 24, padding: 16 },
   statL: { fontFamily: f.semi, fontSize: 13, color: c.muted },
   statV: { fontFamily: f.extra, fontSize: 24, color: c.ink, letterSpacing: -0.6, marginTop: 4 },
@@ -363,11 +355,11 @@ const mkStyles = () => StyleSheet.create({
   avatar: { flex: 1, borderRadius: 40, backgroundColor: c.btn, alignItems: 'center', justifyContent: 'center' },
   avatarLetter: { fontFamily: f.extra, fontSize: 32, color: c.lime },
   pName: { fontFamily: f.extra, fontSize: 24, color: c.ink, letterSpacing: -0.5 },
-  list: { marginHorizontal: 20, borderRadius: 26, paddingHorizontal: 18 },
+  list: { marginHorizontal: 10, borderRadius: 26, paddingHorizontal: 18 },
   li: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15 },
   liK: { fontFamily: f.medium, fontSize: 14, color: c.muted },
   liV: { fontFamily: f.bold, fontSize: 14, color: c.ink },
-  sect: { fontFamily: f.extra, fontSize: 17, color: c.ink, marginHorizontal: 20, marginTop: 24, marginBottom: 10 },
+  sect: { fontFamily: f.extra, fontSize: 17, color: c.ink, marginHorizontal: 10, marginTop: 24, marginBottom: 10 },
   liT: { fontFamily: f.bold, fontSize: 15, color: c.ink },
   liS: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 3, lineHeight: 18 },
   logRow: { borderRadius: 22, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center' },
@@ -375,7 +367,7 @@ const mkStyles = () => StyleSheet.create({
   logSub: { fontFamily: f.medium, fontSize: 12.5, color: c.muted, marginTop: 2 },
   logKcal: { fontFamily: f.extra, fontSize: 17, color: c.ink },
   logUnit: { fontFamily: f.semi, fontSize: 12.5, color: c.muted },
-  credit: { fontFamily: f.regular, fontSize: 11.5, color: c.soft, marginHorizontal: 20, marginTop: 10, textAlign: 'center' },
+  credit: { fontFamily: f.regular, fontSize: 11.5, color: c.soft, marginHorizontal: 10, marginTop: 10, textAlign: 'center' },
   mWrap: { flex: 1, backgroundColor: 'rgba(21,32,15,0.4)', justifyContent: 'center', paddingHorizontal: 20 },
   mCard: { backgroundColor: c.card, borderRadius: 28, padding: 20, gap: 4 },
   mTitle: { fontFamily: f.extra, fontSize: 18, color: c.ink, marginBottom: 8 },

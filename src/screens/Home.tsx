@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { askConfirm } from '../dialog';
 import { Text, tr } from '../i18n';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { c, f, onTheme } from '../theme';
@@ -56,8 +57,9 @@ function MealBlock({ label, entries, icons, open, onToggle, onAdd, onMenu, onEdi
         <Icon d={open ? P.chevDown : P.next} size={20} color={c.muted} />
         <View style={{ flex: 1 }}>
           <Text style={s.blockName}>{label}</Text>
-          <Text style={s.blockSub}>{fmt(total)} calories logged</Text>
+          <Text style={s.blockSub}>{entries.length === 1 ? '1 item' : `${entries.length} items`}</Text>
         </View>
+        <Text style={s.blockKcal}>{fmt(total)} kcal</Text>
         <Pressable ref={dots} onPress={() => dots.current?.measureInWindow((_x, y, _w, h) => onMenu(y + h))} style={s.dots} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Options ${label}`}>
           <Icon d={P.more} size={22} color={c.muted} sw={3} />
         </Pressable>
@@ -70,8 +72,8 @@ function MealBlock({ label, entries, icons, open, onToggle, onAdd, onMenu, onEdi
             const macros = [amount, e.brand].filter(Boolean).join(' · ');
             return (
               <Pressable key={e.id} onPress={() => onEdit(e.id)} style={s.item} accessibilityLabel={`Edit ${e.name}`}>
-                <FoodIcon name={e.name} icon={e.fk ? icons[e.fk] : undefined} size={38} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <FoodIcon name={e.name} icon={e.fk ? icons[e.fk] : undefined} size={32} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={s.itemName} numberOfLines={1}>{e.name}</Text>
                   {macros ? <Text style={s.itemSub}>{macros}</Text> : null}
                 </View>
@@ -116,12 +118,8 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
 
   const entries = state.entries.filter((e) => e.day === selected);
   const confirmClear = (b: { label: string; entries: Entry[] }) => {
-    const go = () => b.entries.forEach((e) => removeEntry(e.id));
-    if (Platform.OS === 'web') return go();
-    Alert.alert(tr('Clear Meal Entry'), tr(`Remove all ${b.entries.length} items from ${b.label}?`), [
-      { text: tr('Cancel'), style: 'cancel' },
-      { text: tr('Clear Meal Entry'), style: 'destructive', onPress: go },
-    ]);
+    askConfirm({ title: 'Clear Meal Entry', message: tr(`Remove all ${b.entries.length} items from ${b.label}?`), confirmText: tr('Clear Meal Entry'), danger: true })
+      .then((ok) => { if (ok) b.entries.forEach((e) => removeEntry(e.id)); });
   };
   const eaten = sum(entries, 'kcal');
   const left = t.kcal - eaten;
@@ -226,7 +224,7 @@ export function Home({ selected, onSelect, onOpenCalendar, onAdd, onEdit, onGoSe
         </View>
       </View>
 
-      <View style={{ marginTop: 18, gap: 12 }}>
+      <View style={{ marginTop: 10, gap: 8 }}>
         {shown.map((m) => (
           <MealBlock
             key={m.key}
@@ -282,13 +280,13 @@ const mkStyles = () => StyleSheet.create({
   dateBtn: { paddingVertical: 8, paddingHorizontal: 8 },
   dateText: { fontFamily: f.extra, fontSize: 20, color: c.ink, letterSpacing: -0.4, minWidth: 130, textAlign: 'center' },
 
-  week: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 8 },
+  week: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 10, marginTop: 8 },
   day: { width: 45, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', gap: 4 },
   dayL: { fontFamily: f.semi, fontSize: 12, color: c.soft },
   dayN: { fontFamily: f.bold, fontSize: 16, color: c.ink },
   todayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: c.lime },
 
-  hero: { marginHorizontal: 20, marginTop: 14, minHeight: 172, paddingVertical: 18, borderRadius: 30, backgroundColor: c.lime, paddingLeft: 18, paddingRight: 20, flexDirection: 'row', alignItems: 'center', gap: 20, overflow: 'hidden' },
+  hero: { marginHorizontal: 10, marginTop: 8, minHeight: 172, paddingVertical: 18, borderRadius: 30, backgroundColor: c.lime, paddingLeft: 18, paddingRight: 20, flexDirection: 'row', alignItems: 'center', gap: 20, overflow: 'hidden' },
   heroBlob: { position: 'absolute', right: -60, top: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.16)' },
   ringCenter: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   ringBig: { fontFamily: f.extra, fontSize: 27, color: c.onLime, letterSpacing: -1 },
@@ -304,7 +302,7 @@ const mkStyles = () => StyleSheet.create({
   track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)', overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4, backgroundColor: c.onLime },
 
-  tiles: { flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 14 },
+  tiles: { flexDirection: 'row', gap: 8, marginHorizontal: 10, marginTop: 8 },
   tile: { ...card, flex: 1, height: 142, borderRadius: 26, padding: 14 },
   tileRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   ico: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
@@ -316,17 +314,18 @@ const mkStyles = () => StyleSheet.create({
   pm: { width: 26, height: 26, borderRadius: 13, marginLeft: 4, backgroundColor: c.blueTint, alignItems: 'center', justifyContent: 'center' },
   drops: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
-  block: { ...card, marginHorizontal: 20, borderRadius: 24, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },
+  block: { ...card, marginHorizontal: 10, borderRadius: 22, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10 },
   dots: { width: 32, height: 36, alignItems: 'center', justifyContent: 'center' },
-  blockHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  blockName: { fontFamily: f.bold, fontSize: 17, color: c.ink },
+  blockHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  blockName: { fontFamily: f.bold, fontSize: 16, color: c.ink },
+  blockKcal: { fontFamily: f.bold, fontSize: 14, color: c.ink, marginRight: -4 },
   blockSub: { fontFamily: f.medium, fontSize: 13, color: c.muted, marginTop: 2 },
-  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, marginTop: 4 },
-  itemName: { fontFamily: f.semi, fontSize: 15, color: c.ink },
-  itemSub: { fontFamily: f.regular, fontSize: 12.5, color: c.muted, marginTop: 2 },
-  itemKcal: { fontFamily: f.bold, fontSize: 15, color: c.ink, marginLeft: 12 },
+  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, marginTop: 2 },
+  itemName: { fontFamily: f.semi, fontSize: 14, color: c.ink },
+  itemSub: { fontFamily: f.regular, fontSize: 12, color: c.muted, marginTop: 1 },
+  itemKcal: { fontFamily: f.bold, fontSize: 14, color: c.ink, marginLeft: 10 },
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
-  addBtn: { backgroundColor: c.tint, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
+  addBtn: { backgroundColor: c.tint, borderRadius: 22, paddingVertical: 9, paddingHorizontal: 24 },
   addText: { fontFamily: f.bold, fontSize: 15, color: c.limeText },
 });
 let s = mkStyles();
