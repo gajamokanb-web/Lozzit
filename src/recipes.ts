@@ -22,7 +22,7 @@ const PROMPT = `You receive the caption (description) of a social media recipe p
 Answer with ONE JSON object only, with exactly these keys:
 {"title": string, "servings": number, "ingredients": [{"name": string, "original": string, "grams": number}], "recipe_grams": string}
 Rules:
-- Keep the language of the post for every text field.
+- Write every text field (title, ingredient names, recipe_grams) in French, translating if the post is in another language. Keep "original" exactly as written in the post.
 - servings: how many portions the recipe makes: the number stated in the post, otherwise your best estimate from the quantities (whole number, at least 1).
 - ingredients: one entry per food. "original" is the quantity exactly as written in the post ("2 cups", "1 c. à soupe", "a pinch", "" if none). "grams" is the amount converted to grams (use ml = g for water-like liquids; for eggs, spoons, cups, pieces, cloves, etc. use typical weights, e.g. 1 egg = 50 g, 1 tbsp oil = 14 g, 1 tsp sugar = 5 g, 1 cup flour = 125 g, 1 cup sugar = 200 g, 1 banana = 120 g). Round to whole grams. Seasonings with no amount: 2 g.
 - recipe_grams: the whole recipe rewritten as clean text: first the ingredient list, one per line "- 120 g flour", then the steps numbered, with every quantity in grams.
